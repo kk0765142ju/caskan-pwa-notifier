@@ -15,7 +15,7 @@
             <p>セラピスト専用給与清算ポータル</p>
         </header>
 
-        <!-- 1. プロフィール ＆ セラピスト設定 (通知ボタン撤去) -->
+        <!-- 1. プロフィール ＆ セラピスト設定 -->
         <div class="card">
             <div class="card-title">
                 <span>📱 セラピスト設定</span>
@@ -94,7 +94,7 @@
                     本日の清算を実行
                 </button>
                 <button id="btnLineSend" class="btn-gold" style="flex: 1; background: linear-gradient(135deg, #06C755 0%, #00B341 100%); color: #ffffff;">
-                    💬 LINE送信 (コピー&LINE起動)
+                    💬 LINE共有・送信 (レポートコピー)
                 </button>
             </div>
         </div>
@@ -367,7 +367,7 @@
             }
         });
 
-        // ★ 最新仕様の安全なLINE起動 ＆ コピー処理 ★
+        // ★ Web Share API (スマホ標準共有機能) ＋ クリップボードのデュアル共有エンジン ★
         btnLineSend.addEventListener('click', async () => {
             try {
                 const lineText = generateLineText();
@@ -376,18 +376,25 @@
                     return;
                 }
 
+                // 1. クリップボードへの完全コピー
                 const copied = await safeCopyText(lineText);
 
-                try {
-                    window.location.href = "https://line.me/R/";
-                } catch (eApp) {
+                // 2. スマホネイティブ共有 (LINE/メッセージへダイレクト共有)
+                if (navigator.share) {
                     try {
-                        window.open("https://line.me/R/", "_blank");
-                    } catch (eWeb) {}
+                        await navigator.share({
+                            title: 'aroma Rilith 給与清算レポート',
+                            text: lineText
+                        });
+                        return;
+                    } catch (errShare) {
+                        if (errShare.name === 'AbortError') return;
+                    }
                 }
 
+                // 3. PC/非対応環境向けフォールバック案内
                 if (copied) {
-                    alert(`給与清算レポートをクリップボードにコピーしました！\n\nLINEアプリが開きますので、トーク画面で長押し『貼り付け』してそのまま送信してください。`);
+                    alert(`給与清算レポートをコピーしました！\nLINEのトーク画面を開き、長押し『貼り付け』してそのまま送信してください。`);
                 } else {
                     alert(`【LINE送信用レポート】\n以下のテキストをコピーしてLINEへ送信してください:\n\n${lineText}`);
                 }
