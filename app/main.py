@@ -6,7 +6,7 @@ import re
 from typing import Dict, Any, Optional
 from fastapi import FastAPI, Request, Query, BackgroundTasks
 from fastapi.responses import HTMLResponse, JSONResponse
-from fastapi.staticfiles import StaticFiles
+from fastapi.middleware.cors import CORSMiddleware
 
 from app.payroll_calculator import PayrollCalculator
 from app.caskan_scraper import CaskanScraper
@@ -18,8 +18,14 @@ logger = logging.getLogger(__name__)
 
 app = FastAPI(title="aroma Rilith Caskan PWA Notifier")
 
-static_dir = os.path.join(os.path.dirname(__file__), "static")
-app.mount("/static", StaticFiles(directory=static_dir), name="static")
+# CORS設定 (全ドメイン許可)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 CASKAN_USER = os.getenv("CASKAN_USER", "staff")
 CASKAN_PASS = os.getenv("CASKAN_PASS", "arlt534")
@@ -31,7 +37,6 @@ scraper = CaskanScraper(
     shop_id=CASKAN_SHOP
 )
 
-# Vercel環境で安全に起動させるための例外保護
 try:
     sheets_mgr = SheetsManager(
         spreadsheet_id=os.getenv("SPREADSHEET_ID", ""),
@@ -39,7 +44,6 @@ try:
     )
     sheets_mgr.connect()
 except Exception as ex_sheets:
-    logger.warning(f"SheetsManager connection optional skip: {ex_sheets}")
     sheets_mgr = SheetsManager()
 
 try:
@@ -48,24 +52,11 @@ try:
         public_key=os.getenv("VAPID_PUBLIC_KEY")
     )
 except Exception as ex_push:
-    logger.warning(f"WebPushNotifier optional skip: {ex_push}")
     push_notifier = WebPushNotifier()
-
-_last_reservations_cache: Dict[str, Any] = {}
-
-@app.get("/", response_class=HTMLResponse)
-async def get_index():
-    html_path = os.path.join(static_dir, "index.html")
-    try:
-        with open(html_path, "r", encoding="utf-8") as f:
-            return f.read()
-    except Exception as e:
-        logger.error(f"HTML load error: {e}")
-        return HTMLResponse(content="<h2>aroma Rilith ポータルを読み込み中...</h2>", status_code=200)
 
 @app.get("/api/therapists")
 async def get_active_therapists():
-    """新店舗 [rilith] の前日・本日出勤キャスト ＆ 全キャストリスト取得"""
+    """新店舗 [rilith] の出勤キャスト ＆ 全キャスト一覧取得"""
     today_therapists = ["森永ここあ", "美波のん", "真白のん", "星乃せら", "あんな", "ほのか"]
     try:
         caskan_data = await scraper.fetch_today_data()
@@ -79,7 +70,6 @@ async def get_active_therapists():
         cast_map = scraper.cast_map
         all_therapists = list(cast_map.keys())
     except Exception as e_map:
-        logger.warning(f"cast_map parse exception: {e_map}")
         all_therapists = today_therapists
 
     combined = []
@@ -115,16 +105,15 @@ async def register_subscription(request: Request):
         try:
             sheets_mgr.register_therapist_subscription(therapist_name, subscription)
         except Exception as e_sub:
-            logger.warning(f"Subscription save skipped: {e_sub}")
+            pass
             
-        logger.info(f"セラピスト [{therapist_name}] のWeb Push通知登録完了")
         return {"status": "success", "message": f"{therapist_name}さんの通知登録が完了しました。"}
     except Exception as e:
         return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
 
 @app.get("/api/therapist/data")
 async def get_therapist_data(name: str = Query(...)):
-    """セラピストピンポイントデータ取得 (前日リアルデータ対応)"""
+    """セラピストピンポイントデータ取得"""
     try:
         tdata = await scraper.fetch_therapist_full_data(name)
         today_res = tdata.get("today_reservations", [])
@@ -133,7 +122,7 @@ async def get_therapist_data(name: str = Query(...)):
         try:
             mapping = sheets_mgr.get_therapist_mapping(name) or {}
         except Exception as e_map:
-            logger.warning(f"get_therapist_mapping skipped: {e_map}")
+            pass
         
         today_summary = PayrollCalculator.calculate_daily_summary(
             reservations=today_res,
