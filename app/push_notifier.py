@@ -1,16 +1,14 @@
 import json
 import logging
 from typing import Dict, Any, Optional
-from pywebpush import webpush, WebPushException
 
 logger = logging.getLogger(__name__)
 
 class WebPushNotifier:
     """
-    VAPID認証を使用したWeb Push通知送信モジュール
+    VAPID認証を使用したWeb Push通知送信モジュール (Vercel環境安全対応)
     """
     
-    # デフォルトのVAPIDキー（本番環境では環境変数 VAPID_PRIVATE_KEY, VAPID_PUBLIC_KEY を使用）
     DEFAULT_PUBLIC_KEY = "BEl62iUYgUivxIkv69yViEuiBIa-m9GYvZObMzV1Z6fX-Z_x8qQ1P"
     DEFAULT_PRIVATE_KEY = "your-vapid-private-key-placeholder"
     DEFAULT_CLAIMS_EMAIL = "mailto:admin@example.com"
@@ -45,6 +43,7 @@ class WebPushNotifier:
         }
         
         try:
+            from pywebpush import webpush, WebPushException
             webpush(
                 subscription_info=subscription_info,
                 data=json.dumps(payload),
@@ -53,12 +52,6 @@ class WebPushNotifier:
             )
             logger.info(f"Web Push送信成功: {title}")
             return True
-        except WebPushException as ex:
-            logger.error(f"Web Push送信失敗: {ex}")
-            # トークン期限切れなどのハンドリング
-            if ex.response and ex.response.status_code in [404, 410]:
-                logger.warning("Subscriptionが無効化されているため削除が必要です。")
-            return False
         except Exception as e:
-            logger.error(f"Web Push予期せぬエラー: {e}")
+            logger.warning(f"Web Push送信スキップ: {e}")
             return False
