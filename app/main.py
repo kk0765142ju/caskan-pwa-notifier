@@ -25,7 +25,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 空文字列の場合も確実にデフォルト値にフォールバックする安全判定
 CASKAN_USER = os.getenv("CASKAN_USER") or "staff"
 CASKAN_PASS = os.getenv("CASKAN_PASS") or "arlt534"
 CASKAN_SHOP = os.getenv("CASKAN_SHOP") or "rilith"
@@ -102,7 +101,11 @@ async def get_therapist_data(name: str = Query(...)):
     """セラピストピンポイントデータ取得"""
     try:
         tdata = await scraper.fetch_therapist_full_data(name)
+        
+        # 当日予約優先、未検出時は対象キャストの全最新予約をフォールバック反映
         today_res = tdata.get("today_reservations", [])
+        if not today_res:
+            today_res = tdata.get("monthly_reservations", [])
         
         today_summary = PayrollCalculator.calculate_daily_summary(
             reservations=today_res,
