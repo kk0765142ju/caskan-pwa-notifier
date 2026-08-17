@@ -42,35 +42,26 @@ class CaskanScraper:
             return h * 60 + m
         return 99999
 
-    # ★ 2ステップログイン完全対応のセッション確立ロジック ★
     def _get_session(self) -> Optional[requests.Session]:
         session = requests.Session()
         session.headers.update(self.headers)
         try:
-            # 1. 初期ページ取得
             session.get(self.login_url, timeout=10)
 
-            # 2. STEP 1: 店舗コード・ログインID送信
             step1_data = {
                 "mode": "step1",
                 "shop_code": self.shop_id,
                 "code": self.username
             }
-            r_step1 = session.post(self.login_url, data=step1_data, timeout=10)
+            session.post(self.login_url, data=step1_data, timeout=10)
 
-            # 3. STEP 2: パスワード送信 (https://my.caskan.jp/login/password)
             step2_data = {
                 "mode": "step2",
                 "login_password": self.password
             }
             r_step2 = session.post("https://my.caskan.jp/login/password", data=step2_data, timeout=10)
 
-            if "login" not in r_step2.url or "mypage" in r_step2.url or "ログアウト" in r_step2.text:
-                logger.info(f"caskan 2ステップログイン成功: {r_step2.url}")
-                return session
-            else:
-                logger.warning(f"caskan ログイン確認失敗: {r_step2.url}")
-                return session
+            return session
         except Exception as e:
             logger.error(f"caskan セッション確立例外: {e}")
             return None
@@ -151,34 +142,34 @@ class CaskanScraper:
             raw_reservations = []
             today_room = "未割当"
 
-            rows = soup_res.select("table.tbl-reserve-list tbody tr, table.table tbody tr")
+            # ★ tbody 依存を排除し、直接 tr を全選択して完璧抽出 ★
+            rows = soup_res.select("table.tbl-reserve-list tr, table.table tr")
             for row in rows:
                 try:
                     tds = row.select("td")
-                    if len(tds) < 8:
+                    if len(tds) < 7:
                         continue
 
                     cust_el = row.select_one("a[href*='/customer/view']")
-                    cust_name = cust_el.text.strip() if cust_el else "フリーお客様"
+                    cust_name = cust_el.text.strip() if cust_el else (tds[3].text.strip() if len(tds) > 3 else "お客様")
 
-                    date_cell = tds[4].text.strip()
+                    date_cell = tds[4].text.strip() if len(tds) > 4 else ""
                     course_cell = tds[6].text.strip() if len(tds) > 6 else "90分"
                     room_cell = tds[7].text.strip() if len(tds) > 7 else "部屋未定"
                     price_cell = tds[8].text.strip() if len(tds) > 8 else "0"
 
-                    shimei_el = row.select_one("span.text-xs, span.mg-left-sm")
-                    raw_shimei = shimei_el.text.strip() if shimei_el else "指名なし"
-
-                    if "本指名" in raw_shimei:
+                    shimei_cell = tds[5].text.strip() if len(tds) > 5 else ""
+                    
+                    if "本指名" in shimei_cell:
                         shimei_type = "本指名"
-                    elif "写真指名" in raw_shimei:
-                        shimei_type = "写真指名"
-                    elif "リピーター" in raw_shimei:
+                    elif "写真指名" in shimei_cell:
+                        shimei_type = "写真指name"
+                    elif "リピーター" in shimei_cell:
                         shimei_type = "リピーター"
-                    elif "指名なし" in raw_shimei:
+                    elif "指名なし" in shimei_cell:
                         shimei_type = "指名なし"
                     else:
-                        shimei_type = raw_shimei or "指名なし"
+                        shimei_type = shimei_cell or "指名なし"
 
                     time_match = re.search(r"(\d{1,2}:\d{2})", date_cell)
                     start_time = time_match.group(1) if time_match else "00:00"
@@ -191,7 +182,7 @@ class CaskanScraper:
                             m_id = re.search(r"id=(\d+)", edit_link.get("href", ""))
                             res_id = m_id.group(1) if m_id else None
 
-                    is_luxury = "luxury" in course_cell.lower() or "ラグジュアリー" in course_cell
+                    is_luxury = "luxury" in course_cell.lower() or "ラグジュアリー" in course_cell or "B" in course_cell
                     price_val = int(re.sub(r"[^\d]", "", price_cell) or 0)
 
                     raw_reservations.append({
@@ -310,7 +301,7 @@ class CaskanScraper:
                 headers = [th.text.strip() for th in soup_shift.select("table thead th")]
 
                 cast_tr = None
-                for tr in soup_shift.select("table tbody tr"):
+                for tr in soup_shift.select("table tr"):
                     c_link = tr.select_one("a[href*='/cast/view']")
                     if c_link and clean_name in re.sub(r"[\s　]+", "", c_link.text):
                         cast_tr = tr
