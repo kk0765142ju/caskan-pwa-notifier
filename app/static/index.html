@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>aroma Rilith | 予約・給与清算</title>
-    <link rel="manifest" href="/static/manifest.json">
-    <link rel="stylesheet" href="/static/style.css">
+    <link rel="manifest" href="/manifest.json">
+    <link rel="stylesheet" href="/style.css">
     <meta name="theme-color" content="#c5a059">
 </head>
 <body>
@@ -61,7 +61,7 @@
             </div>
 
             <div class="timeline" id="reservationList">
-                <div class="status-bar">セラピストを選択すると予約が表示されます。</div>
+                <div class="status-bar">顧客情報を自動読み込み中...</div>
             </div>
         </div>
 
@@ -127,7 +127,7 @@
         };
 
         if ('serviceWorker' in navigator) {
-            navigator.serviceWorker.register('/static/sw.js')
+            navigator.serviceWorker.register('/sw.js')
                 .then(reg => console.log('SW Registered', reg))
                 .catch(err => console.error('SW Error', err));
         }
@@ -178,7 +178,7 @@
                 }
 
                 therapistSelect.disabled = false;
-                therapistSelect.innerHTML = '<option value="">-- セラピスト名を選択してください --</option>';
+                therapistSelect.innerHTML = '';
 
                 if (todayList.length > 0) {
                     const grpToday = document.createElement('optgroup');
@@ -203,12 +203,16 @@
                 therapistSelect.appendChild(grpAll);
 
                 const savedName = localStorage.getItem('selected_therapist');
-                if (savedName && allList.includes(savedName)) {
-                    therapistSelect.value = savedName;
-                    loadTherapistData(savedName);
+                const defaultCast = savedName || (todayList.length > 0 ? todayList[0] : "森永ここあ");
+
+                if (defaultCast) {
+                    therapistSelect.value = defaultCast;
+                    localStorage.setItem('selected_therapist', defaultCast);
+                    loadTherapistData(defaultCast);
                 }
             } catch (e) {
                 console.error(e);
+                loadTherapistData("森永ここあ");
             }
         }
         initTherapists();
@@ -330,7 +334,6 @@
             }
         }
 
-        // 清算実行ボタン
         btnSettle.addEventListener('click', async () => {
             try {
                 if (!currentTherapistData || !currentTherapistData.reservations) {
@@ -375,7 +378,6 @@
             }
         });
 
-        // ★ 400エラーを100%回避する LINE送信 ＆ コピー機能 ★
         btnLineSend.addEventListener('click', async () => {
             try {
                 const lineText = generateLineText();
@@ -384,10 +386,8 @@
                     return;
                 }
 
-                // 1. テキストを確実にクリップボードにコピー
                 await safeCopyText(lineText);
 
-                // 2. 400エラーを出さない LINE アプリ起動スキーム (line://)
                 try {
                     window.location.href = "line://";
                 } catch (eApp) {
@@ -408,7 +408,11 @@
             try {
                 loadingOverlay.classList.add('active');
 
-                const res = await fetch(`/api/therapist/data?name=${encodeURIComponent(name)}`);
+                let res = await fetch(`/api/data?name=${encodeURIComponent(name)}`);
+                if (!res.ok) {
+                    res = await fetch(`/api/therapist/data?name=${encodeURIComponent(name)}`);
+                }
+                
                 const data = await res.json();
                 currentTherapistData = data;
 
@@ -514,7 +518,7 @@
         }
 
         function parseTimeMinutes(timeStr) {
-            const m = String(timeStr || '').match(/(\d{1,2}):(\d{2})/);
+            const m = String(timeStr || '').match(/(\d{1,2}):(\d{2})/, timeStr);
             if (m) {
                 return parseInt(m[1]) * 60 + parseInt(m[2]);
             }
@@ -565,7 +569,7 @@
                     }
 
                     const optText = backInfo.optionFee > 0 ? ` / オプション100%バック: +¥${backInfo.optionFee.toLocaleString()}` : '';
-                    const nomBackText = backInfo.nominateBack > 0 ? ` / 指nameバック: +¥${backInfo.nominateBack.toLocaleString()}` : '';
+                    const nomBackText = backInfo.nominateBack > 0 ? ` / 指名バック: +¥${backInfo.nominateBack.toLocaleString()}` : '';
                     const discBackText = backInfo.discBack > 0 ? ` / <span style="color: #d47a8d;">セラピスト割引負担: -¥${backInfo.discBack.toLocaleString()}</span>` : '';
 
                     const cPrice = Number(r?.price || 0);
