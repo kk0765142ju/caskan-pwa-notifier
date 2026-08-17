@@ -113,7 +113,7 @@ class CaskanScraper:
         jst_tz = datetime.timezone(datetime.timedelta(hours=9))
         now_jst = datetime.datetime.now(jst_tz)
         today_date = now_jst.date()
-        today_str = today_date.strftime("%Y-%m-%d") # 例: "2026-08-17"
+        today_str = today_date.strftime("%Y-%m-%d")
         
         clean_target_name = re.sub(r"[\s　]+", "", therapist_name)
         cast_id = self.cast_map.get(clean_target_name, "")
@@ -123,7 +123,7 @@ class CaskanScraper:
             return self._generate_mock_data(therapist_name)
 
         try:
-            # ★ ユーザー様ご指定のピンポイント日付範囲 (date_from={today_str}&date_to={today_str}) で限定検索 ★
+            # ★ ユーザー様ご指定の日付ピンポイント指定 (過去データの誤混入を100%遮断) ★
             if cast_id:
                 target_url = f"https://my.caskan.jp/reserve?mode=&sort=&date_from={today_str}&date_to={today_str}&cast_id={cast_id}&staff_id=&room_id=&reserve_route_id=&payment_id=&reserve_status_id=&word="
             else:
@@ -145,7 +145,6 @@ class CaskanScraper:
                     shimei_cell = tds[5].text.strip() if len(tds) > 5 else ""
                     clean_shimei_cell = re.sub(r"[\s　]+", "", shimei_cell)
 
-                    # cast_id 未指定時等のための念のためキャスト名チェック
                     if cast_id == "" and clean_target_name not in clean_shimei_cell:
                         continue
 
