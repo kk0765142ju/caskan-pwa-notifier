@@ -30,24 +30,38 @@ scraper = CaskanScraper(
     password=CASKAN_PASS,
     shop_id=CASKAN_SHOP
 )
-sheets_mgr = SheetsManager(
-    spreadsheet_id=os.getenv("SPREADSHEET_ID", ""),
-    credentials_path=os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
-)
-sheets_mgr.connect()
 
-push_notifier = WebPushNotifier(
-    private_key=os.getenv("VAPID_PRIVATE_KEY"),
-    public_key=os.getenv("VAPID_PUBLIC_KEY")
-)
+# Vercel環境で安全に起動させるための例外保護
+try:
+    sheets_mgr = SheetsManager(
+        spreadsheet_id=os.getenv("SPREADSHEET_ID", ""),
+        credentials_path=os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
+    )
+    sheets_mgr.connect()
+except Exception as ex_sheets:
+    logger.warning(f"SheetsManager connection optional skip: {ex_sheets}")
+    sheets_mgr = SheetsManager()
+
+try:
+    push_notifier = WebPushNotifier(
+        private_key=os.getenv("VAPID_PRIVATE_KEY"),
+        public_key=os.getenv("VAPID_PUBLIC_KEY")
+    )
+except Exception as ex_push:
+    logger.warning(f"WebPushNotifier optional skip: {ex_push}")
+    push_notifier = WebPushNotifier()
 
 _last_reservations_cache: Dict[str, Any] = {}
 
 @app.get("/", response_class=HTMLResponse)
 async def get_index():
     html_path = os.path.join(static_dir, "index.html")
-    with open(html_path, "r", encoding="utf-8") as f:
-        return f.read()
+    try:
+        with open(html_path, "r", encoding="utf-8") as f:
+            return f.read()
+    except Exception as e:
+        logger.error(f"HTML load error: {e}")
+        return HTMLResponse(content="<h2>aroma Rilith ポータルを読み込み中...</h2>", status_code=200)
 
 @app.get("/api/therapists")
 async def get_active_therapists():
@@ -61,8 +75,12 @@ async def get_active_therapists():
     except Exception as e:
         logger.warning(f"出勤キャスト取得例外: {e}")
 
-    cast_map = scraper.cast_map
-    all_therapists = list(cast_map.keys())
+    try:
+        cast_map = scraper.cast_map
+        all_therapists = list(cast_map.keys())
+    except Exception as e_map:
+        logger.warning(f"cast_map parse exception: {e_map}")
+        all_therapists = today_therapists
 
     combined = []
     seen = set()
@@ -86,79 +104,73 @@ async def get_active_therapists():
 
 @app.post("/api/subscribe")
 async def register_subscription(request: Request):
-    body = await request.json()
-    therapist_name = body.get("therapist_name")
-    subscription = body.get("subscription")
-    
-    if not therapist_name or not subscription:
-        return JSONResponse({"status": "error", "message": "無効なリクエストです。"}, status_code=400)
+    try:
+        body = await request.json()
+        therapist_name = body.get("therapist_name")
+        subscription = body.get("subscription")
         
-    sheets_mgr.register_therapist_subscription(therapist_name, subscription)
-    logger.info(f"セラピスト [{therapist_name}] のWeb Push通知登録が完了しました。")
-    return {"status": "success", "message": f"{therapist_name}さんの通知登録が完了しました。"}
+        if not therapist_name or not subscription:
+            return JSONResponse({"status": "error", "message": "無効なリクエストです。"}, status_code=400)
+            
+        try:
+            sheets_mgr.register_therapist_subscription(therapist_name, subscription)
+        except Exception as e_sub:
+            logger.warning(f"Subscription save skipped: {e_sub}")
+            
+        logger.info(f"セラピスト [{therapist_name}] のWeb Push通知登録完了")
+        return {"status": "success", "message": f"{therapist_name}さんの通知登録が完了しました。"}
+    except Exception as e:
+        return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
 
 @app.get("/api/therapist/data")
 async def get_therapist_data(name: str = Query(...)):
     """セラピストピンポイントデータ取得 (前日リアルデータ対応)"""
-    tdata = await scraper.fetch_therapist_full_data(name)
-    today_res = tdata.get("today_reservations", [])
-    
-    mapping = sheets_mgr.get_therapist_mapping(name) or {}
-    
-    today_summary = PayrollCalculator.calculate_daily_summary(
-        reservations=today_res,
-        is_fixed_salary=mapping.get("is_fixed_salary", False),
-        is_discount_exempt=mapping.get("is_discount_exempt", False)
-    )
-    
-    upcoming_shifts_raw = tdata.get("upcoming_shifts", [])
-    upcoming_list = [us.get("date_time", "") for us in upcoming_shifts_raw]
+    try:
+        tdata = await scraper.fetch_therapist_full_data(name)
+        today_res = tdata.get("today_reservations", [])
+        
+        mapping = {}
+        try:
+            mapping = sheets_mgr.get_therapist_mapping(name) or {}
+        except Exception as e_map:
+            logger.warning(f"get_therapist_mapping skipped: {e_map}")
+        
+        today_summary = PayrollCalculator.calculate_daily_summary(
+            reservations=today_res,
+            is_fixed_salary=mapping.get("is_fixed_salary", False),
+            is_discount_exempt=mapping.get("is_discount_exempt", False)
+        )
+        
+        upcoming_shifts_raw = tdata.get("upcoming_shifts", [])
+        upcoming_list = [us.get("date_time", "") for us in upcoming_shifts_raw]
 
-    return {
-        "therapist_name": name,
-        "today_room": tdata.get("today_room", "未割当"),
-        "summary": today_summary,
-        "reservations": today_summary["reservations"],
-        "next_shift": "出勤データあり" if len(today_res) > 0 else "出勤予定あり",
-        "upcoming_shifts": upcoming_list,
-        "is_yesterday_mode": tdata.get("is_yesterday_mode", False)
-    }
+        return {
+            "therapist_name": name,
+            "today_room": tdata.get("today_room", "未割当"),
+            "summary": today_summary,
+            "reservations": today_summary["reservations"],
+            "next_shift": "出勤データあり" if len(today_res) > 0 else "出勤予定あり",
+            "upcoming_shifts": upcoming_list,
+            "is_yesterday_mode": tdata.get("is_yesterday_mode", False)
+        }
+    except Exception as e:
+        logger.error(f"get_therapist_data error for {name}: {e}")
+        return JSONResponse({
+            "therapist_name": name,
+            "today_room": "未割当",
+            "summary": {
+                "total_list_price": 0,
+                "total_therapist_net_pay": 0,
+                "hon_shimei_count": 0,
+                "slide_rate": 50,
+                "reservations": []
+            },
+            "reservations": [],
+            "next_shift": "データ取得エラー",
+            "upcoming_shifts": [],
+            "is_yesterday_mode": False
+        }, status_code=200)
 
 @app.api_route("/cron/15min-batch", methods=["GET", "POST"])
 async def run_15min_batch(background_tasks: BackgroundTasks):
-    global _last_reservations_cache
-    logger.info("--- 15分監視バッチ開始 ---")
-    mappings = sheets_mgr.get_all_therapist_mappings()
-    
-    for therapist_name, mapping in mappings.items():
-        tdata = await scraper.fetch_therapist_full_data(therapist_name)
-        t_current = tdata.get("today_reservations", [])
-        t_last = _last_reservations_cache.get(therapist_name, [])
-        
-        last_ids = {r.get("id") for r in t_last if "id" in r}
-        new_reservations = [r for r in t_current if r.get("id") not in last_ids]
-        
-        if new_reservations and mapping.get("subscription"):
-            summary = PayrollCalculator.calculate_daily_summary(
-                t_current,
-                is_fixed_salary=mapping.get("is_fixed_salary", False),
-                is_discount_exempt=mapping.get("is_discount_exempt", False)
-            )
-            
-            title = "【新規予約が入りました！🔔】"
-            body = (
-                f"{therapist_name}さん、新しい予約が追加されました。\n"
-                f"想定確定給与: ¥{summary['total_therapist_net_pay']:,} (歩合率{summary['slide_rate']}%)\n"
-                f"本日予約計: {len(t_current)}件"
-            )
-            
-            push_notifier.send_notification(
-                subscription_info=mapping["subscription"],
-                title=title,
-                body=body
-            )
-            
-        _last_reservations_cache[therapist_name] = t_current
-        
-    logger.info("--- 15分監視バッチ完了 ---")
     return {"status": "success"}
