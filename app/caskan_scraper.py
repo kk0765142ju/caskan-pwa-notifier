@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
-# キャストIDマップ (田島りり様: 71307 含む最新版)
+# キャストIDマップ
 CAST_ID_MAP = {
     "あんな": "75389",
     "ほのか": "75388",
@@ -113,33 +113,23 @@ class CaskanScraper:
         jst_tz = datetime.timezone(datetime.timedelta(hours=9))
         now_jst = datetime.datetime.now(jst_tz)
         today_date = now_jst.date()
-        
         today_str = today_date.strftime("%Y-%m-%d")
-        month_start_str = today_date.replace(day=1).strftime("%Y-%m-%d")
-        
-        today_md_nozero = f"{today_date.month}/{today_date.day}"
-        today_md_zero = f"{today_date.month:02d}/{today_date.day:02d}"
         
         clean_target_name = re.sub(r"[\s　]+", "", therapist_name)
-        cast_id = self.cast_map.get(clean_target_name, "")
         
         session = self._get_session()
         if not session:
             return self._generate_mock_data(therapist_name)
 
         try:
-            # 当月全期間でリクエストし、全データを漏れなく収集
-            if cast_id:
-                target_url = f"https://my.caskan.jp/reserve?mode=&sort=&date_from={month_start_str}&date_to=2026-08-31&cast_id={cast_id}&staff_id=&room_id=&reserve_route_id=&payment_id=&reserve_status_id=&word="
-            else:
-                target_url = f"https://my.caskan.jp/reserve?mode=&sort=&date_from={month_start_str}&date_to=2026-08-31&staff_id=&room_id=&reserve_route_id=&payment_id=&reserve_status_id=&word="
+            # ★ ユーザー様ご指定の「本日店舗全予約取得URL」で1発取得 ★
+            target_url = f"https://my.caskan.jp/reserve?mode=&sort=&date_from={today_str}&date_to={today_str}&cast_id=&staff_id=&room_id=&reserve_route_id=&payment_id=&reserve_status_id=&word="
 
             r_res = session.get(target_url, timeout=5)
             soup_res = BeautifulSoup(r_res.text, "html.parser")
 
             today_room = "未割当"
             today_reservations = []
-            therapist_all_reservations = []
 
             rows = soup_res.select("table.tbl-reserve-list tr, table.table tr")
             for row in rows:
@@ -151,7 +141,8 @@ class CaskanScraper:
                     shimei_cell = tds[5].text.strip() if len(tds) > 5 else ""
                     clean_shimei_cell = re.sub(r"[\s　]+", "", shimei_cell)
 
-                    if cast_id == "" and clean_target_name not in clean_shimei_cell:
+                    # 取得した本日の予約一覧から、選択キャスト名で絞り込み！
+                    if clean_target_name not in clean_shimei_cell:
                         continue
 
                     cust_el = row.select_one("a[href*='/customer/view']")
@@ -205,15 +196,13 @@ class CaskanScraper:
                         "therapist_net_pay": price_val // 2
                     }
 
-                    therapist_all_reservations.append(res_item)
-
-                    is_today = (today_md_nozero in date_cell) or (today_md_zero in date_cell) or (today_str in date_cell)
-                    if is_today:
-                        today_reservations.append(res_item)
-                        if room_cell and room_cell != "部屋未定":
-                            today_room = room_cell
+                    today_reservations.append(res_item)
+                    if room_cell and room_cell != "部屋未定":
+                        today_room = room_cell
                 except Exception as ex_row:
                     continue
+
+            today_reservations.sort(key=lambda x: self._parse_time_minutes(x.get("start_time", "00:00")))
 
             upcoming_shifts = []
             try:
@@ -248,7 +237,7 @@ class CaskanScraper:
                 "therapist_name": therapist_name,
                 "today_room": today_room,
                 "today_reservations": today_reservations,
-                "monthly_reservations": therapist_all_reservations,
+                "monthly_reservations": today_reservations,
                 "upcoming_shifts": upcoming_shifts,
                 "is_yesterday_mode": False
             }

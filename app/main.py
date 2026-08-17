@@ -98,16 +98,14 @@ async def register_subscription(request: Request):
 @app.get("/api/therapist/data")
 @app.get("/therapist/data")
 async def get_therapist_data(name: str = Query(...)):
-    """セラピストピンポイントデータ取得（当日優先、データ未検出時は当月最新予約を確実に表示）"""
+    """セラピストデータ取得 (当日のデータのみを正確に抽出・計算)"""
     try:
         tdata = await scraper.fetch_therapist_full_data(name)
         
-        res_list = tdata.get("today_reservations", [])
-        if not res_list:
-            res_list = tdata.get("monthly_reservations", [])
+        today_res = tdata.get("today_reservations", [])
         
-        summary_result = PayrollCalculator.calculate_daily_summary(
-            reservations=res_list,
+        today_summary = PayrollCalculator.calculate_daily_summary(
+            reservations=today_res,
             is_fixed_salary=False,
             is_discount_exempt=False
         )
@@ -118,9 +116,9 @@ async def get_therapist_data(name: str = Query(...)):
         return {
             "therapist_name": name,
             "today_room": tdata.get("today_room", "未割当"),
-            "summary": summary_result,
-            "reservations": summary_result["reservations"],
-            "next_shift": "出勤データあり" if len(res_list) > 0 else "出勤予定あり",
+            "summary": today_summary,
+            "reservations": today_summary["reservations"],
+            "next_shift": "出勤データあり" if len(today_res) > 0 else "出勤予定あり",
             "upcoming_shifts": upcoming_list,
             "is_yesterday_mode": False
         }
