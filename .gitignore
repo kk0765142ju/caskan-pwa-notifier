@@ -7,10 +7,7 @@ venv/
 .pytest_cache/
 .vercel/
 *.log
-*.png
-*.html
-*.json
-!cast_id_map.json
+caskan_*.html
 debug_*.py
 inspect_*.py
 parse_*.py

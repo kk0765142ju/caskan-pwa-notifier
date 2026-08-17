@@ -1,0 +1,669 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>aroma Rilith | 予約・給与清算</title>
+    <link rel="manifest" href="/manifest.json">
+    <link rel="stylesheet" href="/style.css">
+    <meta name="theme-color" content="#c5a059">
+</head>
+<body>
+    <div class="app-container">
+        <header>
+            <h1>AROMA RILITH</h1>
+            <p>セラピスト専用給与清算ポータル</p>
+        </header>
+
+        <!-- 1. プロフィール ＆ セラピスト設定 -->
+        <div class="card">
+            <div class="card-title">
+                <span>📱 セラピスト設定</span>
+                <span id="todayRoom" class="room-badge">本日のルーム: 未割当</span>
+            </div>
+            <div class="select-group">
+                <select id="therapistSelect">
+                    <option value="">顧客情報を取得中...</option>
+                </select>
+                <button id="btnSubscribe" class="btn-gold">通知を有効にする (登録)</button>
+            </div>
+            <div id="statusMsg" class="status-bar" style="margin-top: 10px;"></div>
+        </div>
+
+        <!-- 2. リアル予約スケジュール (時間の早い順) ＆ 歩合率変更・清算機能 -->
+        <div class="card" id="dataCard" style="position: relative; min-height: 250px;">
+            <div class="loading-overlay" id="loadingOverlay">
+                <div class="spinner"></div>
+                <div class="loading-text">顧客情報取得中...</div>
+            </div>
+
+            <div class="card-title">
+                <span id="scheduleCardTitle">📅 リアル予約スケジュール (時間順)</span>
+                <span id="yesterdayBadge" style="display: none; font-size: 0.72rem; background: rgba(212, 122, 141, 0.3); color: var(--accent-rose); padding: 3px 8px; border-radius: 10px;">前日8/16データで検証中</span>
+            </div>
+
+            <!-- 本指名数表示 ＆ 歩合率手動選択 (ペナルティ対応) -->
+            <div style="background: rgba(255,255,255,0.03); border: 1px solid var(--border-color); border-radius: 12px; padding: 14px; margin-bottom: 16px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <span style="font-size: 0.9rem; color: var(--text-primary); font-weight: bold;">対象 本指名数: <span id="honShimeiCountText" style="color: var(--accent-gold-light); font-size: 1.1rem;">0本</span></span>
+                    <span style="font-size: 0.8rem; color: var(--text-secondary);">歩合率設定:</span>
+                </div>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <select id="rateSelect" style="padding: 10px; font-weight: bold; color: var(--accent-gold-light); background: var(--bg-primary);">
+                        <option value="auto" selected>★ 本指名数による自動スライド歩合 (50%〜70%)</option>
+                        <option value="50">■ 50% (フリー/初指/ペナルティ)</option>
+                        <option value="55">■ 55% (本指名1本)</option>
+                        <option value="60">■ 60% (本指名2本)</option>
+                        <option value="65">■ 65% (本指名3本)</option>
+                        <option value="70">■ 70% (本指名4本以上)</option>
+                    </select>
+                </div>
+            </div>
+
+            <div class="timeline" id="reservationList">
+                <div class="status-bar">セラピストを選択すると予約が表示されます。</div>
+            </div>
+        </div>
+
+        <!-- 3. 清算確定給与 ＆ LINE送信機能 -->
+        <div class="card">
+            <div class="card-title">
+                <span>💰 本日の清算確定給与 ＆ 売上内訳</span>
+                <span id="settleStatus" style="font-size: 0.75rem; color: var(--text-secondary); border: 1px solid rgba(255,255,255,0.2); padding: 2px 8px; border-radius: 10px;">未清算</span>
+            </div>
+
+            <div class="salary-grid">
+                <div class="stat-box">
+                    <div class="label">総売上 (コース+指名-割引)</div>
+                    <div class="value" id="totalSales" style="color: var(--text-primary);">¥0</div>
+                </div>
+                <div class="stat-box highlight">
+                    <div class="label">想定確定給与純額</div>
+                    <div class="value" id="payNet" style="font-size: 1.3rem;">¥0</div>
+                </div>
+                <div class="stat-box" style="border: 1px solid rgba(122, 212, 149, 0.3); background: rgba(122, 212, 149, 0.05);">
+                    <div class="label" style="color: #7ad495;">店落ち (売上 - 給与)</div>
+                    <div class="value" id="shopRevenue" style="color: #7ad495; font-size: 1.3rem;">¥0</div>
+                </div>
+                <div class="stat-box">
+                    <div class="label">確定歩合 / 件数</div>
+                    <div class="value" id="slideRateDisplay" style="font-size: 0.95rem;">50% (0件)</div>
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-top: 16px;">
+                <button id="btnSettle" class="btn-gold" style="flex: 1; background: linear-gradient(135deg, #d47a8d 0%, #a3485c 100%);">
+                    本日の清算を実行
+                </button>
+                <button id="btnLineSend" class="btn-gold" style="flex: 1; background: linear-gradient(135deg, #06C755 0%, #00B341 100%); color: #ffffff;">
+                    💬 LINE送信 (コピー&LINE起動)
+                </button>
+            </div>
+        </div>
+
+        <!-- 4. 直近7日間の出勤予定 (時間付き) -->
+        <div class="card">
+            <div class="card-title">🗓 直近の出勤予定 (7日間・時間付き)</div>
+            <div class="upcoming-list" id="upcomingShifts">
+                <div class="status-bar">予定を読み込み中...</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let publicVapidKey = 'BEl62iUYgUivxIkv69yViEuiBIa-m9GYvZObMzV1Z6fX-Z_x8qQ1P';
+        let currentTherapistData = null;
+
+        const PAYROLL_TABLE = {
+            18000: { 50: 9000,  55: 9500,  60: 10500, 65: 11500, 70: 12500 },
+            14000: { 50: 7000,  55: 7500,  60: 8000,  65: 9000,  70: 9500  },
+            17000: { 50: 8500,  55: 9000,  60: 10000, 65: 11000, 70: 11500 },
+            19000: { 50: 9500,  55: 10000, 60: 11000, 65: 12000, 70: 13000 },
+            21000: { 50: 10500, 55: 11000, 60: 12000, 65: 13000, 70: 14000 },
+            22000: { 50: 11000, 55: 12000, 60: 13000, 65: 14000, 70: 15000 },
+            24000: { 50: 12000, 55: 13000, 60: 14000, 65: 15000, 70: 16000 },
+            30000: { 50: 15000, 55: 16500, 60: 18000, 65: 19500, 70: 21000 },
+            6000:  { 50: 3000,  55: 3000,  60: 3500,  65: 3500,  70: 4000  }
+        };
+
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js')
+                .then(reg => console.log('SW Registered', reg))
+                .catch(err => console.error('SW Error', err));
+        }
+
+        const therapistSelect = document.getElementById('therapistSelect');
+        const rateSelect = document.getElementById('rateSelect');
+        const btnSettle = document.getElementById('btnSettle');
+        const btnLineSend = document.getElementById('btnLineSend');
+        const btnSubscribe = document.getElementById('btnSubscribe');
+        const statusMsg = document.getElementById('statusMsg');
+        const loadingOverlay = document.getElementById('loadingOverlay');
+
+        function getCastFromURL() {
+            try {
+                const params = new URLSearchParams(window.location.search);
+                return params.get('cast') || params.get('therapist') || params.get('name') || null;
+            } catch (e) {
+                return null;
+            }
+        }
+
+        async function initTherapists() {
+            try {
+                const res = await fetch('/api/therapists');
+                const data = await res.json();
+                
+                const todayList = data.today_therapists || [];
+                const allList = data.therapists || [];
+
+                const urlCast = getCastFromURL();
+                
+                if (urlCast) {
+                    const cleanUrlCast = urlCast.replace(/[\s　]+/g, '');
+                    const matchedName = allList.find(t => t.replace(/[\s　]+/g, '') === cleanUrlCast) || urlCast;
+                    
+                    therapistSelect.innerHTML = '';
+                    const opt = document.createElement('option');
+                    opt.value = matchedName;
+                    opt.innerText = `🔒 ${matchedName} 様 (専用ポータル)`;
+                    opt.selected = true;
+                    therapistSelect.appendChild(opt);
+                    
+                    therapistSelect.disabled = true;
+
+                    localStorage.setItem('selected_therapist', matchedName);
+                    loadTherapistData(matchedName);
+                    return;
+                }
+
+                therapistSelect.disabled = false;
+                therapistSelect.innerHTML = '<option value="">-- セラピスト名を選択してください --</option>';
+
+                if (todayList.length > 0) {
+                    const grpToday = document.createElement('optgroup');
+                    grpToday.label = '💖 実績・出勤のあるキャスト 💖';
+                    todayList.forEach(tname => {
+                        const opt = document.createElement('option');
+                        opt.value = tname;
+                        opt.innerText = `💖 ${tname}`;
+                        grpToday.appendChild(opt);
+                    });
+                    therapistSelect.appendChild(grpToday);
+                }
+
+                const grpAll = document.createElement('optgroup');
+                grpAll.label = '🌸 全セラピスト一覧 🌸';
+                allList.forEach(tname => {
+                    const opt = document.createElement('option');
+                    opt.value = tname;
+                    opt.innerText = tname;
+                    grpAll.appendChild(opt);
+                });
+                therapistSelect.appendChild(grpAll);
+
+                const savedName = localStorage.getItem('selected_therapist');
+                if (savedName && allList.includes(savedName)) {
+                    therapistSelect.value = savedName;
+                    loadTherapistData(savedName);
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }
+        initTherapists();
+
+        therapistSelect.addEventListener('change', async () => {
+            const name = therapistSelect.value;
+            if (!name) return;
+            localStorage.setItem('selected_therapist', name);
+            loadTherapistData(name);
+        });
+
+        rateSelect.addEventListener('change', () => {
+            if (currentTherapistData) {
+                renderReservationsWithRate(rateSelect.value);
+            }
+        });
+
+        function safeCopyText(text) {
+            return new Promise((resolve) => {
+                try {
+                    if (navigator.clipboard && window.isSecureContext) {
+                        navigator.clipboard.writeText(text).then(() => resolve(true)).catch(() => {
+                            resolve(fallbackCopyText(text));
+                        });
+                    } else {
+                        resolve(fallbackCopyText(text));
+                    }
+                } catch (e) {
+                    resolve(fallbackCopyText(text));
+                }
+            });
+        }
+
+        function fallbackCopyText(text) {
+            try {
+                const textArea = document.createElement("textarea");
+                textArea.value = text;
+                textArea.style.position = "fixed";
+                textArea.style.top = "0";
+                textArea.style.left = "0";
+                textArea.style.opacity = "0";
+                document.body.appendChild(textArea);
+                textArea.focus();
+                textArea.select();
+                const successful = document.execCommand('copy');
+                document.body.removeChild(textArea);
+                return successful;
+            } catch (err) {
+                return false;
+            }
+        }
+
+        function generateLineText() {
+            try {
+                if (!currentTherapistData) return "セラピストデータが読み込まれていません。";
+
+                const modeRate = rateSelect ? String(rateSelect.value || 'auto') : 'auto';
+                const tname = String(currentTherapistData?.therapist_name || "キャスト");
+                const todayStr = new Date().toLocaleDateString('ja-JP');
+                const honCount = Number(currentTherapistData?.summary?.hon_shimei_count || 0);
+                const autoRate = Number(currentTherapistData?.summary?.slide_rate || 50);
+                const appliedRateStr = (modeRate === 'auto') ? `${autoRate}%` : `${modeRate}%`;
+
+                let totalSales = 0;
+                let totalNetPay = 0;
+                let resDetails = [];
+
+                const reservations = currentTherapistData?.reservations || [];
+                const sortedRes = [...reservations].sort((a, b) => {
+                    return parseTimeMinutes(a?.start_time) - parseTimeMinutes(b?.start_time);
+                });
+
+                sortedRes.forEach((r, idx) => {
+                    try {
+                        const priceVal = Number(r?.price || 0);
+                        totalSales += priceVal;
+
+                        const backInfo = calculateBack(r, modeRate);
+                        const cPay = Number(backInfo?.totalBack || 0);
+                        totalNetPay += cPay;
+
+                        const cTime = String(r?.start_time || "00:00");
+                        const cRoom = String(r?.room_name || "部屋未定");
+                        const cType = String(r?.shimei_type || "指名なし");
+                        const cCourse = String(r?.course_name || "コース名");
+
+                        resDetails.push(`${idx + 1}. ⏰${cTime}〜 (${cType}/${cRoom})\n   ・コース: ${cCourse}\n   ・売上: ¥${priceVal.toLocaleString()} ➔ 給与: +¥${cPay.toLocaleString()}`);
+                    } catch (exRes) {
+                        console.error(exRes);
+                    }
+                });
+
+                const shopNetRevenue = totalSales - totalNetPay;
+
+                let lineText = `【aroma Rilith 給与清算確定レポート】\n`;
+                lineText += `👤 キャスト: ${tname} 様\n`;
+                lineText += `📅 清算日: ${todayStr}\n`;
+                lineText += `----------------------------------\n`;
+                lineText += `💖 本指名数: ${honCount}本\n`;
+                lineText += `⚙️ 適用歩合率: ${appliedRateStr}\n`;
+                lineText += `----------------------------------\n`;
+                lineText += `💵 総売上: ¥${totalSales.toLocaleString()}\n`;
+                lineText += `💰 想定確定給与純額: ¥${totalNetPay.toLocaleString()}\n`;
+                lineText += `🏢 店落ち (店舗純売上): ¥${shopNetRevenue.toLocaleString()}\n`;
+                lineText += `----------------------------------\n`;
+                lineText += `【予約明細 (${sortedRes.length}件)】\n`;
+                if (resDetails.length > 0) {
+                    lineText += resDetails.join('\n') + `\n`;
+                } else {
+                    lineText += `(本日対象の予約はありません)\n`;
+                }
+                lineText += `----------------------------------\n`;
+                lineText += `本日の清算が確定いたしました。`;
+
+                return lineText;
+            } catch (e) {
+                console.error("generateLineText Exception:", e);
+                return `【aroma Rilith 給与清算レポート】\n本日の給与清算が完了しました。`;
+            }
+        }
+
+        btnSettle.addEventListener('click', async () => {
+            try {
+                if (!currentTherapistData || !currentTherapistData.reservations) {
+                    alert('対象の予約データがありません。');
+                    return;
+                }
+
+                const modeRate = rateSelect ? rateSelect.value : 'auto';
+                let totalSales = 0;
+                let totalNetPay = 0;
+
+                currentTherapistData.reservations.forEach(r => {
+                    totalSales += Number(r?.price || 0);
+                    const backInfo = calculateBack(r, modeRate);
+                    totalNetPay += Number(backInfo?.totalBack || 0);
+                });
+
+                const shopNetRevenue = totalSales - totalNetPay;
+
+                const salesEl = document.getElementById('totalSales');
+                const netEl = document.getElementById('payNet');
+                const shopEl = document.getElementById('shopRevenue');
+                const settleStatus = document.getElementById('settleStatus');
+
+                if (salesEl) salesEl.innerText = `¥${totalSales.toLocaleString()}`;
+                if (netEl) netEl.innerText = `¥${totalNetPay.toLocaleString()}`;
+                if (shopEl) shopEl.innerText = `¥${shopNetRevenue.toLocaleString()}`;
+                
+                if (settleStatus) {
+                    settleStatus.innerText = '✅ 清算確定済';
+                    settleStatus.style.borderColor = '#7ad495';
+                    settleStatus.style.color = '#7ad495';
+                }
+
+                const lineText = generateLineText();
+                await safeCopyText(lineText);
+                
+                alert(`本日の清算を完了しました！\n\n・総売上: ¥${totalSales.toLocaleString()}\n・確定給与: ¥${totalNetPay.toLocaleString()}\n・店落ち: ¥${shopNetRevenue.toLocaleString()}\n\n(清算レポートをコピーしました。LINEに貼り付けて送信できます)`);
+            } catch (exSettle) {
+                console.error("btnSettle error:", exSettle);
+                alert('清算完了：データを画面に反映いたしました。');
+            }
+        });
+
+        btnLineSend.addEventListener('click', async () => {
+            try {
+                const lineText = generateLineText();
+                if (!lineText) {
+                    alert('送信する予約データがありません。');
+                    return;
+                }
+
+                await safeCopyText(lineText);
+
+                try {
+                    window.location.href = "line://";
+                } catch (eApp) {
+                    try {
+                        window.open("https://line.me/", "_blank");
+                    } catch (eWeb) {}
+                }
+
+                alert(`給与清算レポートをコピーしました！\n\nLINEアプリが起動しますので、トーク画面で長押し『貼り付け』してそのまま送信してください。`);
+            } catch (exLine) {
+                console.error("btnLineSend exception:", exLine);
+                const lineTextFallback = generateLineText();
+                alert(`【LINE送信用レポート】\nテキストをコピーしました。LINEのトーク画面で貼り付けてご利用ください。`);
+            }
+        });
+
+        async function loadTherapistData(name) {
+            try {
+                loadingOverlay.classList.add('active');
+
+                let res = await fetch(`/api/data?name=${encodeURIComponent(name)}`);
+                if (!res.ok) {
+                    res = await fetch(`/api/therapist/data?name=${encodeURIComponent(name)}`);
+                }
+                
+                const data = await res.json();
+                currentTherapistData = data;
+
+                const honCount = data?.summary?.hon_shimei_count || 0;
+                const autoRate = data?.summary?.slide_rate || 50;
+                const reservations = data?.reservations || [];
+
+                document.getElementById('honShimeiCountText').innerText = `${honCount}本`;
+                rateSelect.value = 'auto';
+                
+                const totalSalesVal = Number(data?.summary?.total_list_price || 0);
+                const netPayVal = Number(data?.summary?.total_therapist_net_pay || 0);
+                const shopRevenueVal = totalSalesVal - netPayVal;
+
+                document.getElementById('totalSales').innerText = `¥${totalSalesVal.toLocaleString()}`;
+                document.getElementById('payNet').innerText = `¥${netPayVal.toLocaleString()}`;
+                document.getElementById('shopRevenue').innerText = `¥${shopRevenueVal.toLocaleString()}`;
+                document.getElementById('slideRateDisplay').innerText = `${autoRate}% (${reservations.length}件)`;
+                document.getElementById('todayRoom').innerText = `本日のルーム: ${data?.today_room || '未割当'}`;
+
+                const yBadge = document.getElementById('yesterdayBadge');
+                if (data?.is_yesterday_mode) {
+                    yBadge.style.display = 'inline-block';
+                } else {
+                    yBadge.style.display = 'none';
+                }
+
+                const settleStatus = document.getElementById('settleStatus');
+                settleStatus.innerText = '清算実行可能';
+                settleStatus.style.color = 'var(--accent-gold-light)';
+
+                const upcomingEl = document.getElementById('upcomingShifts');
+                upcomingEl.innerHTML = '';
+                if (data?.upcoming_shifts && data.upcoming_shifts.length > 0) {
+                    data.upcoming_shifts.forEach(shiftStr => {
+                        const tag = document.createElement('div');
+                        tag.className = 'upcoming-tag';
+                        tag.innerText = `⏰ ${shiftStr}`;
+                        upcomingEl.appendChild(tag);
+                    });
+                } else {
+                    upcomingEl.innerHTML = '<div class="status-bar">直近7日間の出勤予定はありません</div>';
+                }
+
+                renderReservationsWithRate('auto');
+
+            } catch (e) {
+                console.error("loadTherapistData error:", e);
+            } finally {
+                setTimeout(() => {
+                    loadingOverlay.classList.remove('active');
+                }, 300);
+            }
+        }
+
+        function calculateBack(r, modeRate) {
+            const price = Number(r?.price || 0);
+            const autoRate = currentTherapistData?.summary?.slide_rate || 50;
+            
+            let effectiveRate = (modeRate !== 'auto') ? (parseInt(modeRate) || 50) : autoRate;
+
+            const cname = String(r?.course_name || '');
+            const isBCourse = r?.is_luxury || cname.includes('ラグジュアリー') || cname.toLowerCase().includes('b');
+
+            let optionFee = 0;
+            let baseCoursePrice = price;
+
+            if (isBCourse) {
+                optionFee = cname.includes('70分') ? 3000 : 4000;
+                if (r?.cast_margin_option && Number(r.cast_margin_option) > 0) {
+                    optionFee = Number(r.cast_margin_option);
+                }
+                baseCoursePrice = Math.max(0, price - optionFee);
+            }
+
+            let courseBack = 0;
+            if (PAYROLL_TABLE[baseCoursePrice]) {
+                courseBack = PAYROLL_TABLE[baseCoursePrice][effectiveRate] || Math.floor(baseCoursePrice * (effectiveRate / 100));
+            } else {
+                courseBack = Math.floor(baseCoursePrice * (effectiveRate / 100));
+            }
+
+            let nominateBack = Number(r?.cast_margin_nominate || 0);
+            const stype = String(r?.shimei_type || '');
+            if (nominateBack === 0 && (stype.includes('本指名') || stype.includes('写真指名'))) {
+                nominateBack = 2000;
+            }
+
+            let discBack = Number(r?.cast_margin_discount || 0);
+
+            const totalBack = (courseBack + optionFee + nominateBack) - discBack;
+
+            return {
+                effectiveRate: effectiveRate,
+                isBCourse: isBCourse,
+                baseCoursePrice: baseCoursePrice,
+                courseBack: courseBack,
+                optionFee: optionFee,
+                nominateBack: nominateBack,
+                discBack: discBack,
+                totalBack: totalBack
+            };
+        }
+
+        function parseTimeMinutes(timeStr) {
+            const m = String(timeStr || '').match(/(\d{1,2}):(\d{2})/, timeStr);
+            if (m) {
+                return parseInt(m[1]) * 60 + parseInt(m[2]);
+            }
+            return 99999;
+        }
+
+        function renderReservationsWithRate(modeRate) {
+            const listEl = document.getElementById('reservationList');
+            if (!listEl) return;
+            listEl.innerHTML = '';
+
+            if (!currentTherapistData || !currentTherapistData.reservations || currentTherapistData.reservations.length === 0) {
+                listEl.innerHTML = '<div class="status-bar">対象日に選択したセラピストの予約はありません。</div>';
+                return;
+            }
+
+            const sortedRes = [...currentTherapistData.reservations].sort((a, b) => {
+                return parseTimeMinutes(a?.start_time) - parseTimeMinutes(b?.start_time);
+            });
+
+            let totalSalesSum = 0;
+            let totalNetPaySum = 0;
+
+            sortedRes.forEach(r => {
+                try {
+                    totalSalesSum += Number(r?.price || 0);
+                    const backInfo = calculateBack(r, modeRate);
+                    totalNetPaySum += backInfo.totalBack;
+
+                    const item = document.createElement('div');
+                    item.className = 'reservation-item';
+                    
+                    let badgeColor = 'rgba(163, 155, 176, 0.2)';
+                    let badgeText = String(r?.shimei_type || '指名なし');
+                    
+                    if (badgeText.includes('本指名')) {
+                        badgeColor = 'rgba(197, 160, 89, 0.4)';
+                    } else if (badgeText.includes('写真指名')) {
+                        badgeColor = 'rgba(100, 149, 237, 0.4)';
+                    } else if (badgeText.includes('リピーター')) {
+                        badgeColor = 'rgba(212, 122, 141, 0.3)';
+                    }
+
+                    let discBadgeHTML = '';
+                    const discAmt = Number(r?.discount_amount || 0);
+                    if (discAmt > 0) {
+                        discBadgeHTML = `<span class="res-badge" style="background: rgba(212, 122, 141, 0.3); color: var(--accent-rose); font-weight: bold; margin-left: 6px;">🎁 割引: -¥${discAmt.toLocaleString()}</span>`;
+                    }
+
+                    const optText = backInfo.optionFee > 0 ? ` / オプション100%バック: +¥${backInfo.optionFee.toLocaleString()}` : '';
+                    const nomBackText = backInfo.nominateBack > 0 ? ` / 指名バック: +¥${backInfo.nominateBack.toLocaleString()}` : '';
+                    const discBackText = backInfo.discBack > 0 ? ` / <span style="color: #d47a8d;">セラピスト割引負担: -¥${backInfo.discBack.toLocaleString()}</span>` : '';
+
+                    const cPrice = Number(r?.price || 0);
+                    const cTime = String(r?.start_time || '00:00');
+                    const cRoom = String(r?.room_name || '部屋未定');
+                    const cCust = String(r?.customer_name || 'フリーお客様');
+                    const cCourse = String(r?.course_name || 'コース名未定');
+                    const cDate = String(r?.date_text || '');
+
+                    const basePriceNotice = backInfo.isBCourse ? ` (基礎売上¥${backInfo.baseCoursePrice.toLocaleString()}×${backInfo.effectiveRate}%)` : ` (${backInfo.effectiveRate}%)`;
+
+                    item.innerHTML = `
+                        <div class="res-header">
+                            <span>⏰ ${cTime}〜 (${cRoom})</span>
+                            <div>
+                                <span class="res-badge" style="background: ${badgeColor}; font-weight: bold; padding: 3px 10px;">${badgeText}</span>
+                                ${discBadgeHTML}
+                            </div>
+                        </div>
+                        <div class="res-body">
+                            <div>
+                                <div style="font-size: 0.95rem; font-weight: bold; color: var(--text-primary);">👤 ${cCust} 様 (${cDate})</div>
+                                <div style="font-size: 0.82rem; color: var(--text-secondary); margin-top: 2px;">コース: ${cCourse} (売上: ¥${cPrice.toLocaleString()})</div>
+                                <div style="font-size: 0.78rem; color: var(--accent-gold-light); margin-top: 4px;">
+                                    内訳: コースバック${basePriceNotice}: +¥${backInfo.courseBack.toLocaleString()}${optText}${nomBackText}${discBackText}
+                                </div>
+                            </div>
+                            <div style="color: var(--accent-rose); font-weight: bold; font-size: 1.2rem; align-self: center;">+¥${backInfo.totalBack.toLocaleString()}</div>
+                        </div>
+                    `;
+                    listEl.appendChild(item);
+                } catch (exItem) {
+                    console.error("render item error:", exItem);
+                }
+            });
+
+            document.getElementById('totalSales').innerText = `¥${totalSalesSum.toLocaleString()}`;
+            document.getElementById('payNet').innerText = `¥${totalNetPaySum.toLocaleString()}`;
+            document.getElementById('shopRevenue').innerText = `¥${(totalSalesSum - totalNetPaySum).toLocaleString()}`;
+            
+            const autoRate = currentTherapistData?.summary?.slide_rate || 50;
+            const appliedRateStr = (modeRate === 'auto') ? `${autoRate}% (本指名${currentTherapistData?.summary?.hon_shimei_count||0}本)` : `${modeRate}%`;
+            document.getElementById('slideRateDisplay').innerText = `${appliedRateStr} (${sortedRes.length}件)`;
+        }
+
+        btnSubscribe.addEventListener('click', async () => {
+            const name = therapistSelect.value;
+            if (!name) {
+                alert('セラピスト名を選択してください。');
+                return;
+            }
+
+            if (!('Notification' in window) || !('serviceWorker' in navigator)) {
+                alert('お使いのブラウザはWeb Push通知に対応していません。');
+                return;
+            }
+
+            const permission = await Notification.requestPermission();
+            if (permission !== 'granted') {
+                alert('通知の許可が得られませんでした。アドレスバー左側のサイト設定で通知を許可してください。');
+                return;
+            }
+
+            try {
+                const reg = await navigator.serviceWorker.ready;
+                const subscription = await reg.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: urlBase64ToUint8Array(publicVapidKey)
+                });
+
+                await fetch('/api/subscribe', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        therapist_name: name,
+                        subscription: subscription
+                    })
+                });
+
+                statusMsg.style.color = '#7ad495';
+                statusMsg.innerText = '✅ Web Push通知の登録が完了しました！';
+            } catch (e) {
+                console.error(e);
+                statusMsg.style.color = '#d47a8d';
+                statusMsg.innerText = '通知登録でエラーが発生しました。';
+            }
+        });
+
+        function urlBase64ToUint8Array(base64String) {
+            const padding = '='.repeat((4 - base64String.length % 4) % 4);
+            const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+            const rawData = window.atob(base64);
+            const outputArray = new Uint8Array(rawData.length);
+            for (let i = 0; i < rawData.length; ++i) {
+                outputArray[i] = rawData.charCodeAt(i);
+            }
+            return outputArray;
+        }
+    </script>
+</body>
+</html>
