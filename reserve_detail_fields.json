@@ -1,0 +1,202 @@
+{
+  "mode": {
+    "type": "hidden",
+    "value": "save"
+  },
+  "layout": {
+    "type": "hidden",
+    "value": ""
+  },
+  "margin_rate": {
+    "type": "hidden",
+    "value": "65"
+  },
+  "payment_charge_rate": {
+    "type": "hidden",
+    "value": "0"
+  },
+  "id": {
+    "type": "hidden",
+    "value": "2409914"
+  },
+  "back_page": {
+    "type": "hidden",
+    "value": ""
+  },
+  "via": {
+    "type": "hidden",
+    "value": ""
+  },
+  "page_move": {
+    "type": "hidden",
+    "value": "0"
+  },
+  "tel": {
+    "type": "text",
+    "value": "08050308136"
+  },
+  "name": {
+    "type": "text",
+    "value": "えびやよしむね"
+  },
+  "kana": {
+    "type": "text",
+    "value": ""
+  },
+  "email": {
+    "type": "text",
+    "value": "ebiyayo828@yahoo.co.jp"
+  },
+  "cast_id": {
+    "type": null,
+    "value": null
+  },
+  "nominate_check": {
+    "type": "radio",
+    "value": "2"
+  },
+  "system_id": {
+    "type": null,
+    "value": null
+  },
+  "option_system_ids[]": {
+    "type": "checkbox",
+    "value": "961"
+  },
+  "discount_ids[]": {
+    "type": "checkbox",
+    "value": "517"
+  },
+  "reserve_start_date": {
+    "type": "text",
+    "value": "2026-08-17"
+  },
+  "reserve_start_hour": {
+    "type": null,
+    "value": null
+  },
+  "reserve_start_minute": {
+    "type": null,
+    "value": null
+  },
+  "reserve_end_date": {
+    "type": "text",
+    "value": "2026-08-17"
+  },
+  "reserve_end_hour": {
+    "type": null,
+    "value": null
+  },
+  "reserve_end_minute": {
+    "type": null,
+    "value": null
+  },
+  "room_id": {
+    "type": "radio",
+    "value": "100"
+  },
+  "inquiry": {
+    "type": null,
+    "value": null
+  },
+  "payment_id": {
+    "type": "radio",
+    "value": "30"
+  },
+  "fare_price_id": {
+    "type": "radio",
+    "value": ""
+  },
+  "staff_memo": {
+    "type": null,
+    "value": null
+  },
+  "reserve_route_id": {
+    "type": "radio",
+    "value": "7"
+  },
+  "media_id": {
+    "type": null,
+    "value": null
+  },
+  "media_other": {
+    "type": "text",
+    "value": ""
+  },
+  "reserve_status_id": {
+    "type": "radio",
+    "value": "100"
+  },
+  "staff_id": {
+    "type": null,
+    "value": null
+  },
+  "cast_edit_enabled": {
+    "type": "radio",
+    "value": "1"
+  },
+  "system_price": {
+    "type": "text",
+    "value": "19000"
+  },
+  "cast_margin_system": {
+    "type": "text",
+    "value": "12350"
+  },
+  "option_price": {
+    "type": "text",
+    "value": "0"
+  },
+  "cast_margin_option": {
+    "type": "text",
+    "value": "0"
+  },
+  "nominate_charge": {
+    "type": "text",
+    "value": "2000"
+  },
+  "cast_margin_nominate": {
+    "type": "text",
+    "value": "2000"
+  },
+  "discount2": {
+    "type": "text",
+    "value": "0"
+  },
+  "cast_margin_discount": {
+    "type": "text",
+    "value": "0"
+  },
+  "discount": {
+    "type": "text",
+    "value": ""
+  },
+  "fare_price": {
+    "type": "text",
+    "value": "0"
+  },
+  "payment_charge": {
+    "type": "text",
+    "value": "0"
+  },
+  "extention_charge": {
+    "type": "text",
+    "value": ""
+  },
+  "cast_margin_extention": {
+    "type": "text",
+    "value": "0"
+  },
+  "payment_cash": {
+    "type": "text",
+    "value": "21000"
+  },
+  "payment_card": {
+    "type": "text",
+    "value": ""
+  },
+  "payment_emoney": {
+    "type": "text",
+    "value": ""
+  }
+}

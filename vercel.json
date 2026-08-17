@@ -1,0 +1,8 @@
+{
+  "rewrites": [
+    {
+      "source": "/api/therapist/data",
+      "destination": "/api/data"
+    }
+  ]
+}

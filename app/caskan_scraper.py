@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
-# ★ Vercel環境で100%確実に動作するインライン キャストIDマップ ★
+# インライン キャストIDマップ
 CAST_ID_MAP = {
     "あんな": "75389",
     "ほのか": "75388",
@@ -110,15 +110,22 @@ class CaskanScraper:
         return await loop.run_in_executor(None, self._sync_fetch_therapist_full_data, therapist_name)
 
     def _sync_fetch_therapist_full_data(self, therapist_name: str) -> Dict[str, Any]:
-        today_date = datetime.date.today()
+        # 日本標準時 (JST) 基準の日付計算
+        jst_tz = datetime.timezone(datetime.timedelta(hours=9))
+        now_jst = datetime.datetime.now(jst_tz)
+        today_date = now_jst.date()
         yesterday_date = today_date - datetime.timedelta(days=1)
         
         today_str = today_date.strftime("%Y-%m-%d")
         yesterday_str = yesterday_date.strftime("%Y-%m-%d")
         month_start_str = today_date.replace(day=1).strftime("%Y-%m-%d")
         
-        today_md = f"{today_date.month}/{today_date.day}"
-        yesterday_md = f"{yesterday_date.month}/{yesterday_date.day}"
+        # ゼロ埋めと非ゼロ埋め両対応の日付文字列パターン
+        today_md_nozero = f"{today_date.month}/{today_date.day}"
+        today_md_zero = f"{today_date.month:02d}/{today_date.day:02d}"
+        
+        yesterday_md_nozero = f"{yesterday_date.month}/{yesterday_date.day}"
+        yesterday_md_zero = f"{yesterday_date.month:02d}/{yesterday_date.day:02d}"
         
         clean_name = re.sub(r"[\s　]+", "", therapist_name)
         cast_id = self.cast_map.get(clean_name, "")
@@ -164,7 +171,7 @@ class CaskanScraper:
                     elif "リピーター" in raw_shimei:
                         shimei_type = "リピーター"
                     elif "指名なし" in raw_shimei:
-                        shimei_type = "指名なし"
+                        shimei_type = "指nameなし"
                     else:
                         shimei_type = raw_shimei or "指名なし"
 
@@ -268,19 +275,29 @@ class CaskanScraper:
                 monthly_reservations.append(res_item)
 
                 date_cell = r["date_text"]
-                if today_md in date_cell or today_str in date_cell:
+                # ★ 日本時間(JST)基準 ＆ ゼロ埋め・非ゼロ埋め両対応の日付判定 ★
+                is_today = (today_md_nozero in date_cell) or (today_md_zero in date_cell) or (today_str in date_cell)
+                is_yesterday = (yesterday_md_nozero in date_cell) or (yesterday_md_zero in date_cell) or (yesterday_str in date_cell)
+
+                if is_today:
                     today_reservations.append(res_item)
                     if r["room_name"] and r["room_name"] != "部屋未定":
                         today_room = r["room_name"]
 
-                if yesterday_md in date_cell or yesterday_str in date_cell:
+                if is_yesterday:
                     yesterday_reservations.append(res_item)
 
+            # 当日予約が0件、または全件取得時は直近・過去予約も含めてフォールバック
             active_reservations = today_reservations
             is_yesterday_mode = False
-            if len(today_reservations) == 0 and len(yesterday_reservations) > 0:
-                active_reservations = yesterday_reservations
-                is_yesterday_mode = True
+            
+            if len(today_reservations) == 0:
+                if len(yesterday_reservations) > 0:
+                    active_reservations = yesterday_reservations
+                    is_yesterday_mode = True
+                elif len(monthly_reservations) > 0:
+                    # 当月内に予約があれば最新の予約を引き込む
+                    active_reservations = monthly_reservations[:5]
 
             active_reservations.sort(key=lambda x: self._parse_time_minutes(x.get("start_time", "00:00")))
 

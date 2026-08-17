@@ -1,0 +1,21 @@
+{
+  "name": "Rilith 予約・給与通知",
+  "short_name": "Rilith通知",
+  "description": "aroma Rilith セラピスト専用 本日スケジュール・給与確認アプリ",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#121216",
+  "theme_color": "#c5a059",
+  "icons": [
+    {
+      "src": "/static/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/static/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}

@@ -1,0 +1,15 @@
+{
+  "short_name": "aroma Rilith",
+  "name": "aroma Rilith - セラピスト専用ポータル",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "type": "image/png",
+      "sizes": "192x192"
+    }
+  ],
+  "start_url": "/",
+  "background_color": "#121214",
+  "theme_color": "#c5a059",
+  "display": "standalone"
+}
