@@ -10,32 +10,29 @@ from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
+# ★ Vercel環境で100%確実に動作するインライン キャストIDマップ ★
+CAST_ID_MAP = {
+    "あんな": "75389",
+    "ほのか": "75388",
+    "愛沢るな": "71588",
+    "真白のん": "71589",
+    "星乃せら": "71590",
+    "美波のん": "71591",
+    "森永ここあ": "71587"
+}
+
 class CaskanScraper:
-    """
-    caskan (my.caskan.jp) 予約・給与・シフト取得エンジン (Vercel Serverless 完全対応 requests版)
-    """
-    
     def __init__(self, login_url: str = "https://my.caskan.jp/login", username: str = "staff", password: str = "arlt534", shop_id: str = "rilith"):
         self.login_url = login_url
         self.username = username
         self.password = password
         self.shop_id = shop_id
-        self.cast_map = self._load_cast_map()
+        self.cast_map = CAST_ID_MAP
         self.headers = {
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8",
             "Accept-Language": "ja,en-US;q=0.9,en;q=0.8"
         }
-
-    def _load_cast_map(self) -> Dict[str, str]:
-        map_path = os.path.join(os.path.dirname(__file__), "..", "cast_id_map.json")
-        if os.path.exists(map_path):
-            try:
-                with open(map_path, "r", encoding="utf-8") as f:
-                    return json.load(f)
-            except Exception as e:
-                logger.error(f"cast_id_map.json 読み込みエラー: {e}")
-        return {}
 
     def _parse_time_minutes(self, time_str: str) -> int:
         match = re.search(r"(\d{1,2}):(\d{2})", time_str)
@@ -64,7 +61,6 @@ class CaskanScraper:
 
             r2 = session.post(self.login_url, data=login_data, timeout=10)
             if "login" in r2.url and "password" in r2.text.lower():
-                logger.warning("caskan ログイン再試行")
                 r2 = session.post(self.login_url, data=login_data, timeout=10)
 
             return session
