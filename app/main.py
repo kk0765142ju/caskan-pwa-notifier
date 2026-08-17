@@ -55,6 +55,7 @@ except Exception as ex_push:
     push_notifier = WebPushNotifier()
 
 @app.get("/api/therapists")
+@app.get("/therapists")
 async def get_active_therapists():
     """新店舗 [rilith] の出勤キャスト ＆ 全キャスト一覧取得"""
     today_therapists = ["森永ここあ", "美波のん", "真白のん", "星乃せら", "あんな", "ほのか"]
@@ -93,6 +94,7 @@ async def get_active_therapists():
     }
 
 @app.post("/api/subscribe")
+@app.post("/subscribe")
 async def register_subscription(request: Request):
     try:
         body = await request.json()
@@ -112,6 +114,7 @@ async def register_subscription(request: Request):
         return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
 
 @app.get("/api/therapist/data")
+@app.get("/therapist/data")
 async def get_therapist_data(name: str = Query(...)):
     """セラピストピンポイントデータ取得"""
     try:
