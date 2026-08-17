@@ -46,20 +46,20 @@ class CaskanScraper:
         session = requests.Session()
         session.headers.update(self.headers)
         try:
-            session.get(self.login_url, timeout=10)
+            session.get(self.login_url, timeout=5)
 
             step1_data = {
                 "mode": "step1",
                 "shop_code": self.shop_id,
                 "code": self.username
             }
-            session.post(self.login_url, data=step1_data, timeout=10)
+            session.post(self.login_url, data=step1_data, timeout=5)
 
             step2_data = {
                 "mode": "step2",
                 "login_password": self.password
             }
-            r_step2 = session.post("https://my.caskan.jp/login/password", data=step2_data, timeout=10)
+            session.post("https://my.caskan.jp/login/password", data=step2_data, timeout=5)
 
             return session
         except Exception as e:
@@ -76,7 +76,7 @@ class CaskanScraper:
             return {"date": datetime.date.today().strftime("%Y-%m-%d"), "shifts": [], "reservations": []}
 
         try:
-            r = session.get("https://my.caskan.jp/mypage", timeout=10)
+            r = session.get("https://my.caskan.jp/mypage", timeout=5)
             soup = BeautifulSoup(r.text, "html.parser")
             shifts = []
             textarea = soup.select_one("textarea.textarea-auto")
@@ -136,13 +136,14 @@ class CaskanScraper:
             else:
                 target_url = f"https://my.caskan.jp/reserve?date_from={month_start_str}&date_to={today_str}"
 
-            r_res = session.get(target_url, timeout=10)
+            r_res = session.get(target_url, timeout=5)
             soup_res = BeautifulSoup(r_res.text, "html.parser")
 
-            raw_reservations = []
             today_room = "未割当"
+            today_reservations = []
+            yesterday_reservations = []
+            monthly_reservations = []
 
-            # ★ tbody 依存を排除し、直接 tr を全選択して完璧抽出 ★
             rows = soup_res.select("table.tbl-reserve-list tr, table.table tr")
             for row in rows:
                 try:
@@ -163,7 +164,7 @@ class CaskanScraper:
                     if "本指名" in shimei_cell:
                         shimei_type = "本指名"
                     elif "写真指名" in shimei_cell:
-                        shimei_type = "写真指name"
+                        shimei_type = "写真指名"
                     elif "リピーター" in shimei_cell:
                         shimei_type = "リピーター"
                     elif "指名なし" in shimei_cell:
@@ -174,19 +175,16 @@ class CaskanScraper:
                     time_match = re.search(r"(\d{1,2}:\d{2})", date_cell)
                     start_time = time_match.group(1) if time_match else "00:00"
 
-                    link_status = row.select_one("a.link-status")
-                    res_id = link_status.get("data-reserve-id") if link_status else None
-                    if not res_id:
-                        edit_link = row.select_one("a[href*='/reserve/edit?id=']")
-                        if edit_link:
-                            m_id = re.search(r"id=(\d+)", edit_link.get("href", ""))
-                            res_id = m_id.group(1) if m_id else None
-
                     is_luxury = "luxury" in course_cell.lower() or "ラグジュアリー" in course_cell or "B" in course_cell
                     price_val = int(re.sub(r"[^\d]", "", price_cell) or 0)
 
-                    raw_reservations.append({
-                        "id": res_id,
+                    # 指名料・バック等の基本設定
+                    nominate_charge = 2000 if ("本指名" in shimei_type or "写真指名" in shimei_type) else 0
+                    cast_margin_nominate = nominate_charge
+                    option_fee = (3000 if "70分" in course_cell else 4000) if is_luxury else 0
+
+                    res_item = {
+                        "id": None,
                         "therapist_name": therapist_name,
                         "customer_name": cust_name,
                         "date_text": date_cell,
@@ -196,91 +194,31 @@ class CaskanScraper:
                         "room_name": room_cell,
                         "is_luxury": is_luxury,
                         "shimei_type": shimei_type,
-                        "price": price_val
-                    })
+                        "price": price_val,
+                        "nominate_charge": nominate_charge,
+                        "cast_margin_nominate": cast_margin_nominate,
+                        "cast_margin_system": price_val // 2,
+                        "cast_margin_option": option_fee,
+                        "discount_amount": 0,
+                        "cast_margin_discount": 0,
+                        "margin_rate": 50,
+                        "therapist_net_pay": price_val // 2
+                    }
+
+                    monthly_reservations.append(res_item)
+
+                    is_today = (today_md_nozero in date_cell) or (today_md_zero in date_cell) or (today_str in date_cell)
+                    is_yesterday = (yesterday_md_nozero in date_cell) or (yesterday_md_zero in date_cell) or (yesterday_str in date_cell)
+
+                    if is_today:
+                        today_reservations.append(res_item)
+                        if room_cell and room_cell != "部屋未定":
+                            today_room = room_cell
+
+                    if is_yesterday:
+                        yesterday_reservations.append(res_item)
                 except Exception as ex_row:
                     continue
-
-            today_reservations = []
-            yesterday_reservations = []
-            monthly_reservations = []
-
-            for r in raw_reservations:
-                res_id = r.get("id")
-                nominate_charge = 0
-                cast_margin_nominate = 0
-                cast_margin_system = 0
-                cast_margin_option = 0
-                discount_amount = 0
-                cast_margin_discount = 0
-                margin_rate = 50
-                cast_total_pay = 0
-
-                if res_id:
-                    try:
-                        edit_url = f"https://my.caskan.jp/reserve/edit?id={res_id}"
-                        r_edit = session.get(edit_url, timeout=5)
-                        soup_edit = BeautifulSoup(r_edit.text, "html.parser")
-
-                        nom_el = soup_edit.select_one("input[name='nominate_charge']")
-                        nom_back_el = soup_edit.select_one("input[name='cast_margin_nominate']")
-                        sys_back_el = soup_edit.select_one("input[name='cast_margin_system']")
-                        opt_back_el = soup_edit.select_one("input[name='cast_margin_option']")
-                        disc_el = soup_edit.select_one("input[name='discount2']")
-                        disc_back_el = soup_edit.select_one("input[name='cast_margin_discount']")
-                        mrate_el = soup_edit.select_one("input[name='margin_rate']")
-
-                        nominate_charge = int(re.sub(r"[^\d]", "", nom_el.get("value", "0") if nom_el else "0"))
-                        cast_margin_nominate = int(re.sub(r"[^\d]", "", nom_back_el.get("value", "0") if nom_back_el else "0"))
-                        cast_margin_system = int(re.sub(r"[^\d]", "", sys_back_el.get("value", "0") if sys_back_el else "0"))
-                        cast_margin_option = int(re.sub(r"[^\d]", "", opt_back_el.get("value", "0") if opt_back_el else "0"))
-                        discount_amount = int(re.sub(r"[^\d]", "", disc_el.get("value", "0") if disc_el else "0"))
-                        cast_margin_discount = int(re.sub(r"[^\d]", "", disc_back_el.get("value", "0") if disc_back_el else "0"))
-                        margin_rate = int(re.sub(r"[^\d]", "", mrate_el.get("value", "50") if mrate_el else "50"))
-
-                        cast_total_pay = (cast_margin_system + cast_margin_nominate + cast_margin_option) - cast_margin_discount
-                    except Exception as ex_edit:
-                        pass
-
-                real_price = r["price"]
-                if real_price == 0 and discount_amount > 0:
-                    real_price = max(0, r["price"] - discount_amount)
-
-                res_item = {
-                    "id": res_id,
-                    "therapist_name": therapist_name,
-                    "customer_name": r["customer_name"],
-                    "date_text": r["date_text"],
-                    "start_time": r["start_time"],
-                    "end_time": r["end_time"],
-                    "course_name": r["course_name"],
-                    "room_name": r["room_name"],
-                    "is_luxury": r["is_luxury"],
-                    "shimei_type": r["shimei_type"],
-                    "price": real_price,
-                    "nominate_charge": nominate_charge,
-                    "cast_margin_nominate": cast_margin_nominate,
-                    "cast_margin_system": cast_margin_system,
-                    "cast_margin_option": cast_margin_option,
-                    "discount_amount": discount_amount,
-                    "cast_margin_discount": cast_margin_discount,
-                    "margin_rate": margin_rate,
-                    "therapist_net_pay": cast_total_pay if cast_total_pay > 0 else (real_price // 2)
-                }
-
-                monthly_reservations.append(res_item)
-
-                date_cell = r["date_text"]
-                is_today = (today_md_nozero in date_cell) or (today_md_zero in date_cell) or (today_str in date_cell)
-                is_yesterday = (yesterday_md_nozero in date_cell) or (yesterday_md_zero in date_cell) or (yesterday_str in date_cell)
-
-                if is_today:
-                    today_reservations.append(res_item)
-                    if r["room_name"] and r["room_name"] != "部屋未定":
-                        today_room = r["room_name"]
-
-                if is_yesterday:
-                    yesterday_reservations.append(res_item)
 
             active_reservations = today_reservations
             is_yesterday_mode = False
@@ -296,7 +234,7 @@ class CaskanScraper:
 
             upcoming_shifts = []
             try:
-                r_shift = session.get("https://my.caskan.jp/shift", timeout=10)
+                r_shift = session.get("https://my.caskan.jp/shift", timeout=3)
                 soup_shift = BeautifulSoup(r_shift.text, "html.parser")
                 headers = [th.text.strip() for th in soup_shift.select("table thead th")]
 
