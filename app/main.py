@@ -25,9 +25,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-CASKAN_USER = os.getenv("CASKAN_USER", "staff")
-CASKAN_PASS = os.getenv("CASKAN_PASS", "arlt534")
-CASKAN_SHOP = os.getenv("CASKAN_SHOP", "rilith")
+# 空文字列の場合も確実にデフォルト値にフォールバックする安全判定
+CASKAN_USER = os.getenv("CASKAN_USER") or "staff"
+CASKAN_PASS = os.getenv("CASKAN_PASS") or "arlt534"
+CASKAN_SHOP = os.getenv("CASKAN_SHOP") or "rilith"
 
 scraper = CaskanScraper(
     username=CASKAN_USER,
@@ -35,7 +36,6 @@ scraper = CaskanScraper(
     shop_id=CASKAN_SHOP
 )
 
-# Vercel環境で安全なインメモリダミーマネージャー
 class DummySheetsManager:
     def get_therapist_mapping(self, name): return {}
     def register_therapist_subscription(self, name, sub): return True
