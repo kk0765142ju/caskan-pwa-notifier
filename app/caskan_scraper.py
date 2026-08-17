@@ -113,7 +113,12 @@ class CaskanScraper:
         jst_tz = datetime.timezone(datetime.timedelta(hours=9))
         now_jst = datetime.datetime.now(jst_tz)
         today_date = now_jst.date()
+        
         today_str = today_date.strftime("%Y-%m-%d")
+        month_start_str = today_date.replace(day=1).strftime("%Y-%m-%d")
+        
+        today_md_nozero = f"{today_date.month}/{today_date.day}"
+        today_md_zero = f"{today_date.month:02d}/{today_date.day:02d}"
         
         clean_target_name = re.sub(r"[\s　]+", "", therapist_name)
         cast_id = self.cast_map.get(clean_target_name, "")
@@ -123,17 +128,18 @@ class CaskanScraper:
             return self._generate_mock_data(therapist_name)
 
         try:
-            # ★ ユーザー様ご指定の日付ピンポイント指定 (過去データの誤混入を100%遮断) ★
+            # 当月全期間でリクエストし、全データを漏れなく収集
             if cast_id:
-                target_url = f"https://my.caskan.jp/reserve?mode=&sort=&date_from={today_str}&date_to={today_str}&cast_id={cast_id}&staff_id=&room_id=&reserve_route_id=&payment_id=&reserve_status_id=&word="
+                target_url = f"https://my.caskan.jp/reserve?mode=&sort=&date_from={month_start_str}&date_to=2026-08-31&cast_id={cast_id}&staff_id=&room_id=&reserve_route_id=&payment_id=&reserve_status_id=&word="
             else:
-                target_url = f"https://my.caskan.jp/reserve?mode=&sort=&date_from={today_str}&date_to={today_str}&staff_id=&room_id=&reserve_route_id=&payment_id=&reserve_status_id=&word="
+                target_url = f"https://my.caskan.jp/reserve?mode=&sort=&date_from={month_start_str}&date_to=2026-08-31&staff_id=&room_id=&reserve_route_id=&payment_id=&reserve_status_id=&word="
 
             r_res = session.get(target_url, timeout=5)
             soup_res = BeautifulSoup(r_res.text, "html.parser")
 
             today_room = "未割当"
             today_reservations = []
+            therapist_all_reservations = []
 
             rows = soup_res.select("table.tbl-reserve-list tr, table.table tr")
             for row in rows:
@@ -199,13 +205,15 @@ class CaskanScraper:
                         "therapist_net_pay": price_val // 2
                     }
 
-                    today_reservations.append(res_item)
-                    if room_cell and room_cell != "部屋未定":
-                        today_room = room_cell
+                    therapist_all_reservations.append(res_item)
+
+                    is_today = (today_md_nozero in date_cell) or (today_md_zero in date_cell) or (today_str in date_cell)
+                    if is_today:
+                        today_reservations.append(res_item)
+                        if room_cell and room_cell != "部屋未定":
+                            today_room = room_cell
                 except Exception as ex_row:
                     continue
-
-            today_reservations.sort(key=lambda x: self._parse_time_minutes(x.get("start_time", "00:00")))
 
             upcoming_shifts = []
             try:
@@ -240,7 +248,7 @@ class CaskanScraper:
                 "therapist_name": therapist_name,
                 "today_room": today_room,
                 "today_reservations": today_reservations,
-                "monthly_reservations": today_reservations,
+                "monthly_reservations": therapist_all_reservations,
                 "upcoming_shifts": upcoming_shifts,
                 "is_yesterday_mode": False
             }
