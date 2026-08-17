@@ -42,28 +42,35 @@ class CaskanScraper:
             return h * 60 + m
         return 99999
 
+    # ★ 2ステップログイン完全対応のセッション確立ロジック ★
     def _get_session(self) -> Optional[requests.Session]:
         session = requests.Session()
         session.headers.update(self.headers)
         try:
-            r1 = session.get(self.login_url, timeout=10)
-            soup1 = BeautifulSoup(r1.text, "html.parser")
-            
-            token_el = soup1.select_one("input[name='_token']")
-            token = token_el["value"] if token_el else ""
+            # 1. 初期ページ取得
+            session.get(self.login_url, timeout=10)
 
-            login_data = {
-                "_token": token,
+            # 2. STEP 1: 店舗コード・ログインID送信
+            step1_data = {
+                "mode": "step1",
                 "shop_code": self.shop_id,
-                "code": self.username,
+                "code": self.username
+            }
+            r_step1 = session.post(self.login_url, data=step1_data, timeout=10)
+
+            # 3. STEP 2: パスワード送信 (https://my.caskan.jp/login/password)
+            step2_data = {
+                "mode": "step2",
                 "login_password": self.password
             }
+            r_step2 = session.post("https://my.caskan.jp/login/password", data=step2_data, timeout=10)
 
-            r2 = session.post(self.login_url, data=login_data, timeout=10)
-            if "login" in r2.url and "password" in r2.text.lower():
-                r2 = session.post(self.login_url, data=login_data, timeout=10)
-
-            return session
+            if "login" not in r_step2.url or "mypage" in r_step2.url or "ログアウト" in r_step2.text:
+                logger.info(f"caskan 2ステップログイン成功: {r_step2.url}")
+                return session
+            else:
+                logger.warning(f"caskan ログイン確認失敗: {r_step2.url}")
+                return session
         except Exception as e:
             logger.error(f"caskan セッション確立例外: {e}")
             return None
@@ -110,7 +117,6 @@ class CaskanScraper:
         return await loop.run_in_executor(None, self._sync_fetch_therapist_full_data, therapist_name)
 
     def _sync_fetch_therapist_full_data(self, therapist_name: str) -> Dict[str, Any]:
-        # 日本標準時 (JST) 基準の日付計算
         jst_tz = datetime.timezone(datetime.timedelta(hours=9))
         now_jst = datetime.datetime.now(jst_tz)
         today_date = now_jst.date()
@@ -120,7 +126,6 @@ class CaskanScraper:
         yesterday_str = yesterday_date.strftime("%Y-%m-%d")
         month_start_str = today_date.replace(day=1).strftime("%Y-%m-%d")
         
-        # ゼロ埋めと非ゼロ埋め両対応の日付文字列パターン
         today_md_nozero = f"{today_date.month}/{today_date.day}"
         today_md_zero = f"{today_date.month:02d}/{today_date.day:02d}"
         
@@ -171,7 +176,7 @@ class CaskanScraper:
                     elif "リピーター" in raw_shimei:
                         shimei_type = "リピーター"
                     elif "指名なし" in raw_shimei:
-                        shimei_type = "指nameなし"
+                        shimei_type = "指名なし"
                     else:
                         shimei_type = raw_shimei or "指名なし"
 
@@ -275,7 +280,6 @@ class CaskanScraper:
                 monthly_reservations.append(res_item)
 
                 date_cell = r["date_text"]
-                # ★ 日本時間(JST)基準 ＆ ゼロ埋め・非ゼロ埋め両対応の日付判定 ★
                 is_today = (today_md_nozero in date_cell) or (today_md_zero in date_cell) or (today_str in date_cell)
                 is_yesterday = (yesterday_md_nozero in date_cell) or (yesterday_md_zero in date_cell) or (yesterday_str in date_cell)
 
@@ -287,7 +291,6 @@ class CaskanScraper:
                 if is_yesterday:
                     yesterday_reservations.append(res_item)
 
-            # 当日予約が0件、または全件取得時は直近・過去予約も含めてフォールバック
             active_reservations = today_reservations
             is_yesterday_mode = False
             
@@ -296,7 +299,6 @@ class CaskanScraper:
                     active_reservations = yesterday_reservations
                     is_yesterday_mode = True
                 elif len(monthly_reservations) > 0:
-                    # 当月内に予約があれば最新の予約を引き込む
                     active_reservations = monthly_reservations[:5]
 
             active_reservations.sort(key=lambda x: self._parse_time_minutes(x.get("start_time", "00:00")))
