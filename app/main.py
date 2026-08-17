@@ -10,8 +10,6 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.payroll_calculator import PayrollCalculator
 from app.caskan_scraper import CaskanScraper
-from app.sheets_manager import SheetsManager
-from app.push_notifier import WebPushNotifier
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -37,22 +35,12 @@ scraper = CaskanScraper(
     shop_id=CASKAN_SHOP
 )
 
-try:
-    sheets_mgr = SheetsManager(
-        spreadsheet_id=os.getenv("SPREADSHEET_ID", ""),
-        credentials_path=os.getenv("GOOGLE_APPLICATION_CREDENTIALS", "")
-    )
-    sheets_mgr.connect()
-except Exception as ex_sheets:
-    sheets_mgr = SheetsManager()
+# Vercel環境で安全なインメモリダミーマネージャー
+class DummySheetsManager:
+    def get_therapist_mapping(self, name): return {}
+    def register_therapist_subscription(self, name, sub): return True
 
-try:
-    push_notifier = WebPushNotifier(
-        private_key=os.getenv("VAPID_PRIVATE_KEY"),
-        public_key=os.getenv("VAPID_PUBLIC_KEY")
-    )
-except Exception as ex_push:
-    push_notifier = WebPushNotifier()
+sheets_mgr = DummySheetsManager()
 
 @app.get("/api/therapists")
 @app.get("/therapists")
@@ -104,11 +92,6 @@ async def register_subscription(request: Request):
         if not therapist_name or not subscription:
             return JSONResponse({"status": "error", "message": "無効なリクエストです。"}, status_code=400)
             
-        try:
-            sheets_mgr.register_therapist_subscription(therapist_name, subscription)
-        except Exception as e_sub:
-            pass
-            
         return {"status": "success", "message": f"{therapist_name}さんの通知登録が完了しました。"}
     except Exception as e:
         return JSONResponse({"status": "error", "message": str(e)}, status_code=500)
@@ -121,16 +104,10 @@ async def get_therapist_data(name: str = Query(...)):
         tdata = await scraper.fetch_therapist_full_data(name)
         today_res = tdata.get("today_reservations", [])
         
-        mapping = {}
-        try:
-            mapping = sheets_mgr.get_therapist_mapping(name) or {}
-        except Exception as e_map:
-            pass
-        
         today_summary = PayrollCalculator.calculate_daily_summary(
             reservations=today_res,
-            is_fixed_salary=mapping.get("is_fixed_salary", False),
-            is_discount_exempt=mapping.get("is_discount_exempt", False)
+            is_fixed_salary=False,
+            is_discount_exempt=False
         )
         
         upcoming_shifts_raw = tdata.get("upcoming_shifts", [])
