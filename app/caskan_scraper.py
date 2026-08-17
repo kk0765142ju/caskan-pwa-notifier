@@ -10,7 +10,7 @@ from bs4 import BeautifulSoup
 
 logger = logging.getLogger(__name__)
 
-# インライン キャストIDマップ
+# キャストIDマップ (田島りり様: 71307 含む最新版)
 CAST_ID_MAP = {
     "あんな": "75389",
     "ほのか": "75388",
@@ -18,7 +18,9 @@ CAST_ID_MAP = {
     "真白のん": "71589",
     "星乃せら": "71590",
     "美波のん": "71591",
-    "森永ここあ": "71587"
+    "森永ここあ": "71587",
+    "田島りり": "71307",
+    "りり": "71307"
 }
 
 class CaskanScraper:
@@ -111,29 +113,27 @@ class CaskanScraper:
         jst_tz = datetime.timezone(datetime.timedelta(hours=9))
         now_jst = datetime.datetime.now(jst_tz)
         today_date = now_jst.date()
-        
-        today_str = today_date.strftime("%Y-%m-%d")
-        month_start_str = today_date.replace(day=1).strftime("%Y-%m-%d")
-        
-        today_md_nozero = f"{today_date.month}/{today_date.day}"
-        today_md_zero = f"{today_date.month:02d}/{today_date.day:02d}"
+        today_str = today_date.strftime("%Y-%m-%d") # 例: "2026-08-17"
         
         clean_target_name = re.sub(r"[\s　]+", "", therapist_name)
+        cast_id = self.cast_map.get(clean_target_name, "")
         
         session = self._get_session()
         if not session:
             return self._generate_mock_data(therapist_name)
 
         try:
-            # ★ 店舗全体の全予約テーブル（今月初〜当月末）を取得して確実にフィルタリング ★
-            target_url = f"https://my.caskan.jp/reserve?date_from={month_start_str}&date_to=2026-08-31"
+            # ★ ユーザー様ご指定のピンポイント日付範囲 (date_from={today_str}&date_to={today_str}) で限定検索 ★
+            if cast_id:
+                target_url = f"https://my.caskan.jp/reserve?mode=&sort=&date_from={today_str}&date_to={today_str}&cast_id={cast_id}&staff_id=&room_id=&reserve_route_id=&payment_id=&reserve_status_id=&word="
+            else:
+                target_url = f"https://my.caskan.jp/reserve?mode=&sort=&date_from={today_str}&date_to={today_str}&staff_id=&room_id=&reserve_route_id=&payment_id=&reserve_status_id=&word="
 
             r_res = session.get(target_url, timeout=5)
             soup_res = BeautifulSoup(r_res.text, "html.parser")
 
             today_room = "未割当"
             today_reservations = []
-            therapist_all_reservations = []
 
             rows = soup_res.select("table.tbl-reserve-list tr, table.table tr")
             for row in rows:
@@ -145,8 +145,8 @@ class CaskanScraper:
                     shimei_cell = tds[5].text.strip() if len(tds) > 5 else ""
                     clean_shimei_cell = re.sub(r"[\s　]+", "", shimei_cell)
 
-                    # 選択されたセラピスト名の行のみをフィルタリング抽出
-                    if clean_target_name not in clean_shimei_cell:
+                    # cast_id 未指定時等のための念のためキャスト名チェック
+                    if cast_id == "" and clean_target_name not in clean_shimei_cell:
                         continue
 
                     cust_el = row.select_one("a[href*='/customer/view']")
@@ -200,19 +200,13 @@ class CaskanScraper:
                         "therapist_net_pay": price_val // 2
                     }
 
-                    therapist_all_reservations.append(res_item)
-
-                    is_today = (today_md_nozero in date_cell) or (today_md_zero in date_cell) or (today_str in date_cell)
-
-                    if is_today:
-                        today_reservations.append(res_item)
-                        if room_cell and room_cell != "部屋未定":
-                            today_room = room_cell
+                    today_reservations.append(res_item)
+                    if room_cell and room_cell != "部屋未定":
+                        today_room = room_cell
                 except Exception as ex_row:
                     continue
 
-            active_reservations = today_reservations if len(today_reservations) > 0 else therapist_all_reservations[:5]
-            active_reservations.sort(key=lambda x: self._parse_time_minutes(x.get("start_time", "00:00")))
+            today_reservations.sort(key=lambda x: self._parse_time_minutes(x.get("start_time", "00:00")))
 
             upcoming_shifts = []
             try:
@@ -246,8 +240,8 @@ class CaskanScraper:
             return {
                 "therapist_name": therapist_name,
                 "today_room": today_room,
-                "today_reservations": active_reservations,
-                "monthly_reservations": therapist_all_reservations,
+                "today_reservations": today_reservations,
+                "monthly_reservations": today_reservations,
                 "upcoming_shifts": upcoming_shifts,
                 "is_yesterday_mode": False
             }

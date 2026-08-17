@@ -45,7 +45,7 @@ sheets_mgr = DummySheetsManager()
 @app.get("/therapists")
 async def get_active_therapists():
     """新店舗 [rilith] の出勤キャスト ＆ 全キャスト一覧取得"""
-    today_therapists = ["森永ここあ", "美波のん", "真白のん", "星乃せら", "あんな", "ほのか"]
+    today_therapists = ["森永ここあ", "田島りり", "愛沢るな", "美波のん", "真白のん", "星乃せら", "あんな", "ほのか"]
     try:
         caskan_data = await scraper.fetch_today_data()
         shifts = caskan_data.get("shifts", [])
@@ -98,14 +98,11 @@ async def register_subscription(request: Request):
 @app.get("/api/therapist/data")
 @app.get("/therapist/data")
 async def get_therapist_data(name: str = Query(...)):
-    """セラピストピンポイントデータ取得"""
+    """セラピストピンポイントデータ取得（本日日付指定限定）"""
     try:
         tdata = await scraper.fetch_therapist_full_data(name)
         
-        # 当日予約優先、未検出時は対象キャストの全最新予約をフォールバック反映
         today_res = tdata.get("today_reservations", [])
-        if not today_res:
-            today_res = tdata.get("monthly_reservations", [])
         
         today_summary = PayrollCalculator.calculate_daily_summary(
             reservations=today_res,
@@ -123,7 +120,7 @@ async def get_therapist_data(name: str = Query(...)):
             "reservations": today_summary["reservations"],
             "next_shift": "出勤データあり" if len(today_res) > 0 else "出勤予定あり",
             "upcoming_shifts": upcoming_list,
-            "is_yesterday_mode": tdata.get("is_yesterday_mode", False)
+            "is_yesterday_mode": False
         }
     except Exception as e:
         logger.error(f"get_therapist_data error for {name}: {e}")
