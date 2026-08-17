@@ -108,20 +108,16 @@ class CaskanScraper:
         return await loop.run_in_executor(None, self._sync_fetch_therapist_full_data, therapist_name)
 
     def _sync_fetch_therapist_full_data(self, therapist_name: str) -> Dict[str, Any]:
+        # ★ 日本標準時 (JST) 基準の本日の日付算出 ★
         jst_tz = datetime.timezone(datetime.timedelta(hours=9))
         now_jst = datetime.datetime.now(jst_tz)
         today_date = now_jst.date()
-        yesterday_date = today_date - datetime.timedelta(days=1)
         
         today_str = today_date.strftime("%Y-%m-%d")
-        yesterday_str = yesterday_date.strftime("%Y-%m-%d")
         month_start_str = today_date.replace(day=1).strftime("%Y-%m-%d")
         
         today_md_nozero = f"{today_date.month}/{today_date.day}"
         today_md_zero = f"{today_date.month:02d}/{today_date.day:02d}"
-        
-        yesterday_md_nozero = f"{yesterday_date.month}/{yesterday_date.day}"
-        yesterday_md_zero = f"{yesterday_date.month:02d}/{yesterday_date.day:02d}"
         
         clean_name = re.sub(r"[\s　]+", "", therapist_name)
         cast_id = self.cast_map.get(clean_name, "")
@@ -131,18 +127,18 @@ class CaskanScraper:
             return self._generate_mock_data(therapist_name)
 
         try:
+            # 日付範囲を指定せず、該当キャストの全予約一覧をまとめて取得
             if cast_id:
-                target_url = f"https://my.caskan.jp/reserve?mode=&sort=&date_from={month_start_str}&date_to=2026-08-31&cast_id={cast_id}"
+                target_url = f"https://my.caskan.jp/reserve?cast_id={cast_id}"
             else:
-                target_url = f"https://my.caskan.jp/reserve?date_from={month_start_str}&date_to={today_str}"
+                target_url = f"https://my.caskan.jp/reserve"
 
             r_res = session.get(target_url, timeout=5)
             soup_res = BeautifulSoup(r_res.text, "html.parser")
 
             today_room = "未割当"
             today_reservations = []
-            yesterday_reservations = []
-            monthly_reservations = []
+            all_parsed_reservations = []
 
             rows = soup_res.select("table.tbl-reserve-list tr, table.table tr")
             for row in rows:
@@ -178,7 +174,6 @@ class CaskanScraper:
                     is_luxury = "luxury" in course_cell.lower() or "ラグジュアリー" in course_cell or "B" in course_cell
                     price_val = int(re.sub(r"[^\d]", "", price_cell) or 0)
 
-                    # 指名料・バック等の基本設定
                     nominate_charge = 2000 if ("本指名" in shimei_type or "写真指名" in shimei_type) else 0
                     cast_margin_nominate = nominate_charge
                     option_fee = (3000 if "70分" in course_cell else 4000) if is_luxury else 0
@@ -205,30 +200,20 @@ class CaskanScraper:
                         "therapist_net_pay": price_val // 2
                     }
 
-                    monthly_reservations.append(res_item)
+                    all_parsed_reservations.append(res_item)
 
+                    # 本日(8/17)のマッチング判定
                     is_today = (today_md_nozero in date_cell) or (today_md_zero in date_cell) or (today_str in date_cell)
-                    is_yesterday = (yesterday_md_nozero in date_cell) or (yesterday_md_zero in date_cell) or (yesterday_str in date_cell)
-
+                    
                     if is_today:
                         today_reservations.append(res_item)
                         if room_cell and room_cell != "部屋未定":
                             today_room = room_cell
-
-                    if is_yesterday:
-                        yesterday_reservations.append(res_item)
                 except Exception as ex_row:
                     continue
 
-            active_reservations = today_reservations
-            is_yesterday_mode = False
-            
-            if len(today_reservations) == 0:
-                if len(yesterday_reservations) > 0:
-                    active_reservations = yesterday_reservations
-                    is_yesterday_mode = True
-                elif len(monthly_reservations) > 0:
-                    active_reservations = monthly_reservations[:5]
+            # ★ 前日モードのフォールバックを完全廃止し、本日の予約（または一覧最新）を表示 ★
+            active_reservations = today_reservations if len(today_reservations) > 0 else all_parsed_reservations[:5]
 
             active_reservations.sort(key=lambda x: self._parse_time_minutes(x.get("start_time", "00:00")))
 
@@ -265,9 +250,9 @@ class CaskanScraper:
                 "therapist_name": therapist_name,
                 "today_room": today_room,
                 "today_reservations": active_reservations,
-                "monthly_reservations": monthly_reservations,
+                "monthly_reservations": all_parsed_reservations,
                 "upcoming_shifts": upcoming_shifts,
-                "is_yesterday_mode": is_yesterday_mode
+                "is_yesterday_mode": False
             }
         except Exception as e:
             logger.error(f"requestsスクレイピング例外: {e}")
