@@ -108,7 +108,6 @@ class CaskanScraper:
         return await loop.run_in_executor(None, self._sync_fetch_therapist_full_data, therapist_name)
 
     def _sync_fetch_therapist_full_data(self, therapist_name: str) -> Dict[str, Any]:
-        # ★ 日本標準時 (JST) 基準の本日の日付算出 ★
         jst_tz = datetime.timezone(datetime.timedelta(hours=9))
         now_jst = datetime.datetime.now(jst_tz)
         today_date = now_jst.date()
@@ -119,32 +118,35 @@ class CaskanScraper:
         today_md_nozero = f"{today_date.month}/{today_date.day}"
         today_md_zero = f"{today_date.month:02d}/{today_date.day:02d}"
         
-        clean_name = re.sub(r"[\s　]+", "", therapist_name)
-        cast_id = self.cast_map.get(clean_name, "")
+        clean_target_name = re.sub(r"[\s　]+", "", therapist_name)
         
         session = self._get_session()
         if not session:
             return self._generate_mock_data(therapist_name)
 
         try:
-            # 日付範囲を指定せず、該当キャストの全予約一覧をまとめて取得
-            if cast_id:
-                target_url = f"https://my.caskan.jp/reserve?cast_id={cast_id}"
-            else:
-                target_url = f"https://my.caskan.jp/reserve"
+            # ★ 店舗全体の全予約テーブル（今月初〜当月末）を取得して確実にフィルタリング ★
+            target_url = f"https://my.caskan.jp/reserve?date_from={month_start_str}&date_to=2026-08-31"
 
             r_res = session.get(target_url, timeout=5)
             soup_res = BeautifulSoup(r_res.text, "html.parser")
 
             today_room = "未割当"
             today_reservations = []
-            all_parsed_reservations = []
+            therapist_all_reservations = []
 
             rows = soup_res.select("table.tbl-reserve-list tr, table.table tr")
             for row in rows:
                 try:
                     tds = row.select("td")
-                    if len(tds) < 7:
+                    if len(tds) < 6:
+                        continue
+
+                    shimei_cell = tds[5].text.strip() if len(tds) > 5 else ""
+                    clean_shimei_cell = re.sub(r"[\s　]+", "", shimei_cell)
+
+                    # 選択されたセラピスト名の行のみをフィルタリング抽出
+                    if clean_target_name not in clean_shimei_cell:
                         continue
 
                     cust_el = row.select_one("a[href*='/customer/view']")
@@ -155,8 +157,6 @@ class CaskanScraper:
                     room_cell = tds[7].text.strip() if len(tds) > 7 else "部屋未定"
                     price_cell = tds[8].text.strip() if len(tds) > 8 else "0"
 
-                    shimei_cell = tds[5].text.strip() if len(tds) > 5 else ""
-                    
                     if "本指名" in shimei_cell:
                         shimei_type = "本指名"
                     elif "写真指名" in shimei_cell:
@@ -200,11 +200,10 @@ class CaskanScraper:
                         "therapist_net_pay": price_val // 2
                     }
 
-                    all_parsed_reservations.append(res_item)
+                    therapist_all_reservations.append(res_item)
 
-                    # 本日(8/17)のマッチング判定
                     is_today = (today_md_nozero in date_cell) or (today_md_zero in date_cell) or (today_str in date_cell)
-                    
+
                     if is_today:
                         today_reservations.append(res_item)
                         if room_cell and room_cell != "部屋未定":
@@ -212,9 +211,7 @@ class CaskanScraper:
                 except Exception as ex_row:
                     continue
 
-            # ★ 前日モードのフォールバックを完全廃止し、本日の予約（または一覧最新）を表示 ★
-            active_reservations = today_reservations if len(today_reservations) > 0 else all_parsed_reservations[:5]
-
+            active_reservations = today_reservations if len(today_reservations) > 0 else therapist_all_reservations[:5]
             active_reservations.sort(key=lambda x: self._parse_time_minutes(x.get("start_time", "00:00")))
 
             upcoming_shifts = []
@@ -226,7 +223,7 @@ class CaskanScraper:
                 cast_tr = None
                 for tr in soup_shift.select("table tr"):
                     c_link = tr.select_one("a[href*='/cast/view']")
-                    if c_link and clean_name in re.sub(r"[\s　]+", "", c_link.text):
+                    if c_link and clean_target_name in re.sub(r"[\s　]+", "", c_link.text):
                         cast_tr = tr
                         break
 
@@ -250,7 +247,7 @@ class CaskanScraper:
                 "therapist_name": therapist_name,
                 "today_room": today_room,
                 "today_reservations": active_reservations,
-                "monthly_reservations": all_parsed_reservations,
+                "monthly_reservations": therapist_all_reservations,
                 "upcoming_shifts": upcoming_shifts,
                 "is_yesterday_mode": False
             }
