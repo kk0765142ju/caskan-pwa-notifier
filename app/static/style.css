@@ -1,0 +1,302 @@
+:root {
+    --bg-primary: #110e14;
+    --bg-card: #1c1722;
+    --bg-card-hover: #261f2f;
+    --accent-gold: #c5a059;
+    --accent-gold-light: #e5c378;
+    --accent-rose: #d47a8d;
+    --text-primary: #f5f3f7;
+    --text-secondary: #a39bb0;
+    --border-color: rgba(197, 160, 89, 0.2);
+    --shadow-glow: 0 8px 32px rgba(197, 160, 89, 0.15);
+}
+
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+}
+
+body {
+    background-color: var(--bg-primary);
+    color: var(--text-primary);
+    min-height: 100vh;
+    padding: 16px;
+    display: flex;
+    justify-content: center;
+}
+
+.app-container {
+    width: 100%;
+    max-width: 480px;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    padding-bottom: 40px;
+    position: relative;
+}
+
+header {
+    text-align: center;
+    padding: 20px 0 10px;
+    border-bottom: 1px solid var(--border-color);
+}
+
+header h1 {
+    font-size: 1.4rem;
+    letter-spacing: 2px;
+    color: var(--accent-gold-light);
+    font-weight: 600;
+}
+
+header p {
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    margin-top: 4px;
+}
+
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border-color);
+    border-radius: 16px;
+    padding: 20px;
+    box-shadow: var(--shadow-glow);
+    position: relative;
+}
+
+.card-title {
+    font-size: 0.95rem;
+    color: var(--accent-gold);
+    margin-bottom: 14px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 600;
+}
+
+.select-group {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+/* ★ 検索テキストボックスと選択UIの拡張 ★ */
+.search-input-wrapper {
+    position: relative;
+    width: 100%;
+}
+
+.search-input-wrapper input[type="text"] {
+    width: 100%;
+    padding: 14px 14px 14px 40px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    color: var(--text-primary);
+    font-size: 1rem;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.search-input-wrapper input[type="text"]:focus {
+    border-color: var(--accent-gold);
+    box-shadow: 0 0 10px rgba(197, 160, 89, 0.3);
+}
+
+.search-icon {
+    position: absolute;
+    left: 12px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--accent-gold);
+    font-size: 1.1rem;
+    pointer-events: none;
+}
+
+select {
+    width: 100%;
+    padding: 14px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 10px;
+    color: var(--text-primary);
+    font-size: 1rem;
+    outline: none;
+}
+
+select.search-select-box {
+    max-height: 180px;
+    overflow-y: auto;
+}
+
+select.search-select-box option {
+    padding: 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+select.search-select-box option:hover,
+select.search-select-box option:focus,
+select.search-select-box option:checked {
+    background: var(--bg-card-hover) !important;
+    color: var(--accent-gold-light);
+}
+
+.btn-gold {
+    width: 100%;
+    padding: 14px;
+    background: linear-gradient(135deg, var(--accent-gold) 0%, #997838 100%);
+    border: none;
+    border-radius: 10px;
+    color: #fff;
+    font-size: 1rem;
+    font-weight: bold;
+    cursor: pointer;
+    box-shadow: 0 4px 12px rgba(197, 160, 89, 0.3);
+    transition: transform 0.2s, opacity 0.2s;
+}
+
+.btn-gold:active {
+    transform: scale(0.98);
+}
+
+.salary-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-top: 10px;
+}
+
+.stat-box {
+    background: rgba(255, 255, 255, 0.03);
+    padding: 14px;
+    border-radius: 12px;
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    text-align: center;
+}
+
+.stat-box .label {
+    font-size: 0.75rem;
+    color: var(--text-secondary);
+}
+
+.stat-box .value {
+    font-size: 1.2rem;
+    font-weight: bold;
+    color: var(--accent-gold-light);
+    margin-top: 4px;
+}
+
+.stat-box.highlight .value {
+    color: var(--accent-rose);
+    font-size: 1.4rem;
+}
+
+.timeline {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.reservation-item {
+    background: rgba(255, 255, 255, 0.02);
+    border-left: 3px solid var(--accent-gold);
+    padding: 12px 14px;
+    border-radius: 0 10px 10px 0;
+}
+
+.res-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.85rem;
+    color: var(--accent-gold);
+    font-weight: bold;
+}
+
+.res-body {
+    margin-top: 6px;
+    font-size: 0.95rem;
+    display: flex;
+    justify-content: space-between;
+}
+
+.res-badge {
+    background: rgba(212, 122, 141, 0.2);
+    color: var(--accent-rose);
+    font-size: 0.7rem;
+    padding: 2px 8px;
+    border-radius: 12px;
+}
+
+.room-badge {
+    background: rgba(197, 160, 89, 0.15);
+    color: var(--accent-gold-light);
+    border: 1px solid var(--border-color);
+    padding: 4px 10px;
+    border-radius: 20px;
+    font-size: 0.8rem;
+    font-weight: bold;
+}
+
+.upcoming-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.upcoming-tag {
+    background: rgba(255, 255, 255, 0.05);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    padding: 6px 12px;
+    border-radius: 8px;
+    font-size: 0.85rem;
+    color: var(--text-primary);
+}
+
+.status-bar {
+    text-align: center;
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+}
+
+.loading-overlay {
+    display: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(17, 14, 20, 0.85);
+    backdrop-filter: blur(4px);
+    z-index: 100;
+    border-radius: 16px;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 14px;
+}
+
+.loading-overlay.active {
+    display: flex;
+}
+
+.spinner {
+    width: 42px;
+    height: 42px;
+    border: 3px solid rgba(197, 160, 89, 0.2);
+    border-top: 3px solid var(--accent-gold);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+.loading-text {
+    font-size: 0.85rem;
+    color: var(--accent-gold-light);
+    letter-spacing: 1px;
+    font-weight: 500;
+}
